@@ -1,3 +1,5 @@
 EXPLORATION
 electronics
 l_eff_maps
+__pycache__
+*.pyc

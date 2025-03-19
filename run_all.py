@@ -106,7 +106,8 @@ for ev_number in range(0, 10):
     
     print(full_response.shape)
     
-    
+    full_response_all_freqs = np.zeros((*full_response.shape[:-1], len(freqs)), dtype=np.complex128)
+    full_response_all_freqs[..., in_antenna_band] = full_response
     
     vout, vout_f = efield_2_voltage(event_trace_fft, in_antenna_band, full_response, target_rate=2e9, current_rate=2e9)
 

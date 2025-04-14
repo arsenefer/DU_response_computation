@@ -20,6 +20,9 @@ from typing import Union, Any
 from dataclasses import dataclass
 from numbers import Number
 altitude = 1264
+kb=1.38064852e-23
+c=299792458
+Z0 = 4*np.pi * c * 1e-7 
 
 @dataclass
 class DataTable:
@@ -294,23 +297,27 @@ def get_leff(t, antenna_percieved_theta, antenna_percieved_phi, N_sample=8192, d
     target_freqs = sp.fft.rfftfreq(N_sample, d=sampling_period)
     in_antenna_band = (target_freqs >= t.frequency.min()) & (target_freqs <= t.frequency.max())
 
-    l_eff_theta = interp.interpn(
+    leff_theta = interp.interpn(
         (t.theta, t.phi),
         t.leff_theta_reim.swapaxes(0, 2),
         (antenna_percieved_theta[:] * 180 / np.pi, antenna_percieved_phi[:] * 180 / np.pi),
-        method='linear'
+        method='linear',
+        bounds_error=False,
+        fill_value=0
     )
-    l_eff_phi = interp.interpn(
+    leff_phi = interp.interpn(
         (t.theta, t.phi),
         t.leff_phi_reim.swapaxes(0, 2),
         (antenna_percieved_theta[:] * 180 / np.pi, antenna_percieved_phi[:] * 180 / np.pi),
-        method='linear'
+        method='linear',
+        bounds_error=False,
+        fill_value=0
     )
-    l_eff_theta = interp.interp1d(
-        t.frequency, l_eff_theta, axis=1, kind='cubic'
+    leff_theta = interp.interp1d(
+        t.frequency, leff_theta, axis=1, kind='cubic', bounds_error=False, fill_value=0
     )(target_freqs[in_antenna_band])
-    l_eff_phi = interp.interp1d(
-        t.frequency, l_eff_phi, axis=1, kind='cubic'
+    leff_phi = interp.interp1d(
+        t.frequency, leff_phi, axis=1, kind='cubic', bounds_error=False, fill_value=0
     )(target_freqs[in_antenna_band])
 
     c_p, s_p = np.cos(antenna_percieved_phi), np.sin(antenna_percieved_phi)
@@ -318,11 +325,11 @@ def get_leff(t, antenna_percieved_theta, antenna_percieved_phi, N_sample=8192, d
     e_theta_i = np.vstack((c_t * c_p, c_t * s_p, -s_t)).T
     e_phi_i = np.vstack((-s_p, c_p, np.zeros_like(s_p))).T
 
-    l_eff_cartesian = (
-        e_theta_i[:, :, None] * l_eff_theta[:, None, :] +
-        e_phi_i[:, :, None] * l_eff_phi[:, None, :]
+    leff_cartesian = (
+        e_theta_i[:, :, None] * leff_theta[:, None, :] +
+        e_phi_i[:, :, None] * leff_phi[:, None, :]
     )
-    return l_eff_cartesian
+    return leff_cartesian
 
 def apply_leff(event_E_trace, t, event_pos, event_xmax, N_sample=8192, duration=4.096 * 1e-6):
     """
@@ -396,22 +403,26 @@ def apply_leff(event_E_trace, t, event_pos, event_xmax, N_sample=8192, duration=
         (t.theta, t.phi),
         t.leff_theta_reim.swapaxes(0, 2),
         (antenna_perceived_theta[:] * 180 / np.pi, antenna_perceived_phi[:] * 180 / np.pi),
-        method='linear'
+        method='linear',
+        bounds_error=False,
+        fill_value=0
     )
     antenna_response_phi = interp.interpn(
         (t.theta, t.phi),
         t.leff_phi_reim.swapaxes(0, 2),
         (antenna_perceived_theta[:] * 180 / np.pi, antenna_perceived_phi[:] * 180 / np.pi),
-        method='linear'
+        method='linear',
+        bounds_error=False,
+        fill_value=0
     )
 
     antenna_response_theta_interpolator = interp.interp1d(
-        t.frequency, antenna_response_theta, axis=1, kind='cubic'
+        t.frequency, antenna_response_theta, axis=1, kind='cubic', bounds_error=False, fill_value=0
     )
     antenna_response_theta_stretch = antenna_response_theta_interpolator(freqs[in_antenna_band])
 
     antenna_response_phi_interpolator = interp.interp1d(
-        t.frequency, antenna_response_phi, axis=1, kind='cubic'
+        t.frequency, antenna_response_phi, axis=1, kind='cubic', bounds_error=False, fill_value=0
     )
     antenna_response_phi_stretch = antenna_response_phi_interpolator(freqs[in_antenna_band])
 
@@ -662,3 +673,267 @@ def efield_2_voltage(
     ratio = target_rate / current_rate
     m = int((vout_f.shape[-1] - 1) * 2 * ratio)
     return sp.fft.irfft(vout_f, m) * ratio, vout_f
+
+def latlon2zenaz(lst_rad, detector_lat, lat_map, long_map, mod_pi=True, add_pi=False):
+    """
+    lst_rad:latitude of the detector
+    detector_lat:longitude of the detector
+    lat_map:latitude of the source
+    long_map:longitude of the source
+    add_pi: if True, add pi to the azimuth angle
+    """
+    coszenithp=(np.sin(lst_rad)*np.cos(detector_lat)*np.sin(lat_map)*np.cos(long_map)+np.sin(lst_rad)*np.sin(detector_lat)*np.sin(lat_map)*np.sin(long_map)+np.cos(lat_map)*np.cos(lst_rad))
+    coszenithp = np.clip(coszenithp, -1, 1)
+    WX = np.sin(detector_lat)*np.sin(lat_map)*np.cos(long_map) - np.cos(detector_lat)*np.sin(lat_map)*np.sin(long_map)
+    NX = - np.cos(lst_rad)*np.cos(detector_lat)*np.sin(lat_map)*np.cos(long_map) - np.sin(detector_lat)*np.cos(lst_rad)*np.sin(lat_map)*np.sin(long_map) + np.sin(lst_rad)*np.cos(lat_map)
+    zenithp=np.arccos(coszenithp)
+    azimuthp = np.arctan2(WX, NX)
+    
+    assert add_pi ^ mod_pi, "Exactly one of add_pi or mod_pi should be True"
+
+    if add_pi:
+        azimuthp = azimuthp + np.pi
+    elif mod_pi:
+        azimuthp = azimuthp % (2*np.pi) 
+    return zenithp, azimuthp
+
+class noise_power_cl():
+    def __init__(self, detector_lat, leff_x, leff_y, leff_z, frequencies):
+        self.detector_lat = detector_lat
+        self.leff_x = leff_x
+        self.leff_y = leff_y
+        self.leff_z = leff_z
+        self.frequencies = frequencies
+
+
+def _noise_power_time_freq(lst_rad, detector_lat, temp_map, cur_freq, l_eff, lat_map, long_map):
+    delta_lat, delta_long = np.abs(lat_map[0,0]-lat_map[0,1]), np.abs(long_map[0,0]-long_map[1,0])
+    all_zenith, all_azimuth = latlon2zenaz(detector_lat, lst_rad, lat_map, long_map, mod_pi=True)
+
+
+    leff_interpolated_theta = interp.interpn((l_eff.phi, l_eff.theta), 
+                                            l_eff.leff_theta_reim[cur_freq,:,:], 
+                                            (all_azimuth*180/np.pi, all_zenith*180/np.pi),
+                                            bounds_error=False, fill_value=0)
+    leff_interpolated_phi = interp.interpn((l_eff.phi, l_eff.theta), 
+                                            l_eff.leff_phi_reim[cur_freq,:,:], 
+                                            (all_azimuth*180/np.pi, all_zenith*180/np.pi),
+                                            bounds_error=False, fill_value=0)
+    
+    B_nu = 2 * (cur_freq)**2 * kb * temp_map/(c**2)
+    A_eff = np.abs(leff_interpolated_theta) **2 + np.abs(leff_interpolated_phi)**2
+    P_nu = 1/2 * A_eff * B_nu * np.sin(lat_map) * delta_lat * delta_long
+    P_nu = np.sum(P_nu)
+    return P_nu
+
+def noise_power_allday(lst_rads, detector_lat, temp_map, cur_freq, l_eff, lat_map, long_map, frequency_map):
+    P_nu = []
+    for lst_rad in lst_rads:
+        P_nu.append(_noise_power_time_freq(lst_rad, detector_lat, temp_map, cur_freq, l_eff, lat_map, long_map, frequency_map))
+    P_nu = np.array(P_nu)
+    return P_nu
+
+def noise_power(lst_rads, detector_lat, list_temp_files, list_freqs, leff_x, leff_y, leff_z):
+
+    P = np.zeros((len(lst_rads), 3, len(list_freqs)))
+    for i, (temp_file, freq) in enumerate(zip(list_temp_files, list_freqs)):
+        lat_map, long_map, temp_map = np.load(temp_file)
+        P_nu_coord = noise_power_allday(lst_rads, detector_lat, temp_map, freq, leff_x, lat_map, long_map, freq)
+        P[:,0,i] = P_nu_coord
+        P_nu_coord = noise_power_allday(lst_rads, detector_lat, temp_map, freq, leff_y, lat_map, long_map, freq)
+        P[:,1,i] = P_nu_coord
+        P_nu_coord = noise_power_allday(lst_rads, detector_lat, temp_map, freq, leff_z, lat_map, long_map, freq)
+        P[:,2,i] = P_nu_coord
+    return P
+
+class compute_noise():
+    def __init__(self, lst_rads, detector_lat, list_temp_files, list_freqs, leff_x=None, leff_y=None, leff_z=None):
+        self.detector_lat = detector_lat
+        self.lst_rads = lst_rads
+        self.list_temp_files = list_temp_files
+        self.frequencies = list_freqs
+        self.lat_map, self.long_map, _ = np.load(list_temp_files[0])
+
+        self.delta_lat, self.delta_long = np.abs(self.lat_map[0,0]-self.lat_map[1, 0]), np.abs(self.long_map[0,0]-self.long_map[0,1])
+
+        assert (type(leff_x) is not type(None)) or (type(leff_y) is not type(None)) or (type(leff_z) is not type(None)), "At least one of leff_x, leff_y, leff_z should be provided"
+        self.leff_x = leff_x 
+        self.leff_x.leff_theta_reim = interp.interp1d(self.leff_x.frequency, self.leff_x.leff_theta_reim, 
+                                                      axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        self.leff_x.leff_phi_reim = interp.interp1d(self.leff_x.frequency, self.leff_x.leff_phi_reim, 
+                                                    axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        #todo interpolate frequencies
+        print(self.frequencies.max(), self.leff_x.frequency.max())
+
+        self.leff_y = leff_y   
+        self.leff_y.leff_theta_reim = interp.interp1d(self.leff_y.frequency, self.leff_y.leff_theta_reim,
+                                                      axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        self.leff_y.leff_phi_reim = interp.interp1d(self.leff_y.frequency, self.leff_y.leff_phi_reim,
+                                                    axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        #todo interpolate frequencies
+
+        self.leff_z = leff_z    
+        self.leff_z.leff_theta_reim = interp.interp1d(self.leff_z.frequency, self.leff_z.leff_theta_reim,
+                                                        axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        self.leff_z.leff_phi_reim = interp.interp1d(self.leff_z.frequency, self.leff_z.leff_phi_reim,
+                                                    axis=0, kind='cubic', bounds_error=False, fill_value=0)(self.frequencies)
+        #todo interpolate frequencies
+        print(np.abs(self.leff_x.leff_theta_reim).max())
+        print(np.abs(self.leff_y.leff_theta_reim).max())
+        print(np.abs(self.leff_z.leff_theta_reim).max())
+        pass
+
+    def freq_index(self, freq):
+        """
+        Returns the index of the frequency in the list of frequencies.
+        """
+        return np.where(self.frequencies == freq)[0][0]
+    
+    def get_temp_map(self, freq_idx):
+        """
+        Returns the temperature map for the given frequency index.
+        """
+        _,_,temp_map = np.load(self.list_temp_files[freq_idx])
+        return temp_map
+    
+    def latlon2zenaz(self, lst_rad, mod_pi=True, add_pi=False):
+        """
+        lst_rad:latitude of the detector
+        detector_lat:longitude of the detector
+        lat_map:latitude of the source
+        long_map:longitude of the source
+        add_pi: if True, add pi to the azimuth angle
+        mod_pi: if True, mod pi to the azimuth angle
+        """
+        coszenithp=(np.sin(lst_rad)*np.cos(self.detector_lat)*np.sin(self.lat_map)*np.cos(self.long_map)+np.sin(lst_rad)*np.sin(self.detector_lat)*np.sin(self.lat_map)*np.sin(self.long_map)+np.cos(self.lat_map)*np.cos(lst_rad))
+        coszenithp = np.clip(coszenithp, -1, 1)
+        WX = np.sin(self.detector_lat)*np.sin(self.lat_map)*np.cos(self.long_map) - np.cos(self.detector_lat)*np.sin(self.lat_map)*np.sin(self.long_map)
+        NX = - np.cos(lst_rad)*np.cos(self.detector_lat)*np.sin(self.lat_map)*np.cos(self.long_map) - np.sin(self.detector_lat)*np.cos(lst_rad)*np.sin(self.lat_map)*np.sin(self.long_map) + np.sin(lst_rad)*np.cos(self.lat_map)
+        zenithp=np.arccos(coszenithp)
+        azimuthp = np.arctan2(WX, NX)
+        
+        assert add_pi ^ mod_pi, "Exactly one of add_pi or mod_pi should be True"
+
+        if add_pi:
+            azimuthp = azimuthp + np.pi
+        elif mod_pi:
+            azimuthp = azimuthp % (2*np.pi) 
+        return zenithp, azimuthp
+
+    def noise_power(self):
+        """
+        Calculate the noise power in frequency domains.
+
+        This method computes the noise power for a given local sidereal time (LST) 
+        in radians and frequency. It uses effective lengths, temperature maps, and 
+        other parameters to calculate the power.
+
+        Args:
+            lst_rad (float): Local sidereal time in radians.
+            freq (float): Frequency at which the noise power is to be calculated.
+
+        Returns:
+            numpy.ndarray: A 1D array containing the noise power for the x, y, and z 
+            components.
+
+        Notes:
+            - The method interpolates effective lengths (`l_eff`) over azimuth and 
+              zenith angles.
+            - The noise power is calculated using the Planck law for blackbody 
+              radiation and the effective area.
+            - The integration considers the latitude map and angular resolution 
+              (`delta_lat` and `delta_long`).
+
+        Dependencies:
+            - `latlon2zenaz`: Converts latitude and longitude to zenith and azimuth angles.
+            - `freq_index`: Maps the frequency to its corresponding index.
+            - `get_temp_map`: Retrieves the temperature map for a given frequency index.
+            - `interp.interpn`: Performs multi-dimensional interpolation.
+            - Constants: `kb` (Boltzmann constant), `c` (speed of light).
+
+        """
+        P_nuxyz = np.zeros((len(self.lst_rads), 3, len(self.frequencies)))
+        for lst_idx, lst_rad in enumerate(self.lst_rads):
+            print(f"Calculating noise power for LST {lst_rad*12/np.pi:.2f} hours")
+            all_zenith, all_azimuth = self.latlon2zenaz(lst_rad, mod_pi=True)
+
+            for coord_idx, l_eff in enumerate([self.leff_x, self.leff_y, self.leff_z]):
+                if type(l_eff) is type(None):
+                    continue
+                lt = l_eff.leff_theta_reim
+                leff_interpolated_theta = interp.interpn((l_eff.phi, l_eff.theta), 
+                                                        np.rollaxis(lt, 0, lt.ndim),
+                                                        (all_azimuth*180/np.pi, all_zenith*180/np.pi),
+                                                        bounds_error=False, fill_value=0, )
+                leff_interpolated_theta = np.rollaxis(leff_interpolated_theta, -1, 0)
+
+                lp = l_eff.leff_phi_reim
+                leff_interpolated_phi = interp.interpn((l_eff.phi, l_eff.theta), 
+                                                        np.rollaxis(lp, 0, lp.ndim),
+                                                        (all_azimuth*180/np.pi, all_zenith*180/np.pi),
+                                                        bounds_error=False, fill_value=0)
+                leff_interpolated_phi = np.rollaxis(leff_interpolated_phi, -1, 0)
+
+                A_eff = np.abs(leff_interpolated_theta) **2 + np.abs(leff_interpolated_phi)**2
+                for freq_idx, freq in enumerate(self.frequencies):
+                    # print(A_eff[freq_idx].max(), A_eff.shape)
+                    temp_map = self.get_temp_map(freq_idx)
+                    B_nu = 2 * (freq)**2 * kb * temp_map/(c**2)
+                    
+                    P_nu = 1/2 * A_eff[freq_idx] * B_nu * np.sin(self.lat_map) * self.delta_lat * self.delta_long
+                    P_nu = np.sum(P_nu)
+                    # print(self.delta_lat,  self.delta_long)
+                    P_nuxyz[lst_idx, coord_idx, freq_idx] = P_nu
+
+
+        P_nuxyz = np.array(P_nuxyz)
+        self.P_nu = P_nuxyz
+        return P_nu   
+
+    # def noise_power(self):
+    #     P = np.zeros((len(self.lst_rads), 3, len(self.list_freqs)))
+    #     for freq_idx, freq in enumerate(self.list_freqs):
+    #         print(f"Calculating noise power for frequency {freq/1e6:.2f} MHz")
+    #         for lst_idx, lst_rad in enumerate(self.lst_rads):
+    #             P_nu_coord = self._noise_power_time_freq(lst_rad, freq)
+    #             P[lst_idx, :, freq_idx] = P_nu_coord
+    #     self.noise_power_spectrum = P
+    #     return P
+    
+    def noise_rms_traces(self, target_freqs, tf_rfchain):
+        N = (len(target_freqs)-1) * 2
+        fs = 2 * target_freqs[-1]
+
+        P_nu = self.noise_power_spectrum if hasattr(self, 'noise_power_spectrum') else self.noise_power()
+        V_rms_voc_2 =  2 * Z0 * P_nu
+        V_rms_voc_2_target = interp.interp1d(self.frequencies, V_rms_voc_2, bounds_error=False, fill_value=0, axis=-1)(target_freqs)
+        V_rms_voc_target = V_rms_voc_2_target * N * fs / 2
+        V_rms_voc_target = np.sqrt(V_rms_voc_target)
+
+        self.noise_spectrum = np.abs(V_rms_voc_target * tf_rfchain)
+        return self.noise_spectrum
+    
+    def save_spectrum(self, directory='.', name='noise_spectrum'):
+        """
+        Save the noise spectrum to a file.
+
+        Args:
+            directory (str): Directory where the file will be saved.
+            name (str): Name of the file (without extension).
+        """
+        if not(hasattr(self, 'noise_spectrum')):
+            raise ValueError("Noise spectrum not computed. Run noise_rms_traces(target_frqs, tf_rfchain) first.")
+        np.save(f'{directory}/{name}.npy', self.noise_spectrum)
+        np.save(f'{directory}/{name}_frequencies.npy', self.frequencies)
+        np.save(f'{directory}/{name}_lsthours.npy', self.lst_rads*12/np.pi)
+
+
+def noise_sample(noise_spectrum, frequencies, lst_times, n_samples, lst_time, seed=None):
+    lst_idx = np.abs(lst_times - lst_time).argmin()
+    n_freqs = len(frequencies)
+
+    rng = np.random.default_rng(seed)
+    amp = rng.normal(loc=0, scale=noise_spectrum[lst_idx], size = (n_samples, 3, len(frequencies)))
+    phase = 2 * np.pi * rng.random(size=(n_samples, 3, n_freqs))
+    v_complex_fft = amp * np.exp(1j*phase)
+    return v_complex_fft, np.fft.irfft(v_complex_fft, axis=-1)

@@ -718,7 +718,11 @@ def efield_2_voltage(
               ratio of target_rate to current_rate.
             - numpy.ndarray: The modified frequency-domain voltage signal.
     """
+    if full_response.shape[-1] != np.sum(in_antenna_band):
+        full_response = full_response[..., in_antenna_band]
+
     vout_f = np.zeros_like(event_trace_fft)
+    print(event_trace_fft[:, :, in_antenna_band].shape, full_response.shape)
     vout_fft_inband = np.einsum(
         "ijk,ijlk->ilk", event_trace_fft[:, :, in_antenna_band], full_response
     )
@@ -991,7 +995,7 @@ class compute_noise():
             azimuthp = azimuthp % (2*np.pi)
         return zenithp, azimuthp
 
-    def noise_power(self):
+    def noise_power(self, plot=False):
         """
         Calculate the noise power in frequency domains.
 
@@ -1056,7 +1060,7 @@ class compute_noise():
                 for freq_idx, freq in enumerate(self.frequencies):
                     temp_map = self.get_temp_map(freq_idx)
                     B_nu = 2 * (freq)**2 * kb * temp_map/(c**2)
-                    if (np.abs(freq - 95e6) < 10) and ((lst_rad*12/np.pi) % 12 == 6):
+                    if (np.abs(freq - 95e6) < 10) and ((lst_rad*12/np.pi) % 12 == 6) and plot:
                         plot_quantities(lst_rad, freq_idx, all_zenith, all_azimuth,
                                         leff_interpolated_theta, leff_interpolated_phi, A_eff, B_nu, self.long_map, self.lat_map, self.detector_lat)
                         plt.show()

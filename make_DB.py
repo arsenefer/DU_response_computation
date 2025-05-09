@@ -136,8 +136,8 @@ for root_dir in all_root_dirs:
                                             current_rate=2e9, target_rate=2e9)
 
             noise_samples, samples_fft = noise_computer.noise_samples(10, len(vout_f))
-            file_Vout.append(vout+noise_samples)
-            # np.save(f"{output_dir}/{ev_number}.npy", vout+noise_samples)
+
+            # vout = voltage_to_adc(vout)
             with h5py.File(f"{output_dir}/{start+ev_number}.hdf5", "w") as f:
                 dset = f.create_dataset("v_out", vout.shape, dtype=vout.dtype)
                 dset[:] = vout

@@ -1,3 +1,29 @@
+"""
+This script processes electric field data and converts it into voltage traces, incorporating noise and system response. 
+
+1. Load and process S-parameters for various RF chain components.
+2. Compute transfer functions for the RF chain.
+3. Load effective length maps for antennas.
+4. Simulate noise traces based on LST and latitude.
+5. Convert electric field data to voltage traces, including noise.
+
+It does that for multiple ROOT files containing electric field data, and outputs the voltage traces for each event as a list.
+Each component of the list stands for one root file
+Each component is a list of array whose element are the trace for the corresponding event.
+
+Inputs:
+- ROOT directories containing electric field data.
+- S-parameter files for RF components.
+- Effective length maps for antennas.
+- Noise maps for LST-based noise computation.
+Usage:
+- Ensure all required input files (S-parameters, effective length maps, noise maps) are available in the specified paths.
+- Adjust input parameters such as sampling frequency, duration, and noise level as needed.
+- Run the script to generate voltage traces for the given electric field data.
+"""
+
+
+
 # Here is the file to convert efield to voltage
 import numpy as np 
 import uproot 

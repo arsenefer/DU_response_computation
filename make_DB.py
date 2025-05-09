@@ -28,11 +28,15 @@ Usage:
 import numpy as np 
 import uproot 
 import scipy as sp
+from glob import glob
+import os
+import h5py
 
 from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, compute_noise
 
 ## Input section
-all_root_dirs = [f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/only_0_NJ/"]
+all_root_dirs = glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/*", )
+print(all_root_dirs)
 latitude = (90-(42.2281)) * np.pi / 180
 
 #Input traces info
@@ -97,48 +101,46 @@ noise_computer = compute_noise(10., latitude,
                               out_freqs, 
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_rms_traces()
-All_vout = []
+output_dir_base = "./output_DC2/"
 for root_dir in all_root_dirs:
-    all_antenna_pos, meta_data, efield_data = open_event_root(root_dir)
+    output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-2]
+    os.makedirs(output_dir, exist_ok=True)
     file_Vout = []
-    for ev_number in range(len(efield_data['traces'])):
-        event_traces = efield_data['traces'][ev_number].to_numpy().astype(np.float64)
+    step = 50
+    for upper_bound in np.arange(0, 1000, step)+step:
+        start = upper_bound - step
+        stop = upper_bound
+        all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
+        for ev_number in range(len(efield_data['traces'])):
+            event_traces = efield_data['traces'][ev_number].to_numpy().astype(np.float64)
 
-        event_trace_fft = sp.fft.rfft(event_traces)
-        antenna_pos = all_antenna_pos[efield_data['du_id'][ev_number]]
-        xmax_pos = meta_data['xmax_pos'][ev_number]
-        shower_core_pos = meta_data['core_pos'][ev_number]
+            event_trace_fft = sp.fft.rfft(event_traces)
+            antenna_pos = all_antenna_pos[efield_data['du_id'][ev_number]]
+            xmax_pos = meta_data['xmax_pos'][ev_number]
+            shower_core_pos = meta_data['core_pos'][ev_number]
 
 
-        # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
-        theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
-        l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-        l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-        l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-        l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
+            # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
+            theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
+            l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
+            l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
+            l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
+            l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
 
-        full_response = l_eff * tf[None,None,...]
-        
-        
+            full_response = l_eff * tf[None,None,...]
             
-        vout, vout_f = efield_2_voltage(event_trace_fft, 
-                                        full_response, 
-                                        current_rate=2e9, target_rate=2e9)
+            
+                
+            vout, vout_f = efield_2_voltage(event_trace_fft, 
+                                            full_response, 
+                                            current_rate=2e9, target_rate=2e9)
 
-        samples, samples_fft = noise_computer.noise_samples(10, len(vout_f))
-        file_Vout.append(vout+samples)
-        
-    All_vout.append(file_Vout)
-
-print(len(All_vout), type(All_vout))
-print(len(All_vout[0]), type(All_vout[0]))
-print(len(All_vout[0][0]), type(All_vout[0][0]))
-print(All_vout[0][0].shape)
-print(All_vout[0][0][0].shape)
-print(np.std(voltage_to_adc(All_vout[0][0][0]), axis=-1))
-import matplotlib.pyplot as plt
-for i in range(10):
-    plt.figure()
-    for J in range(3):
-        plt.plot(np.linspace(0,duration, N_samples), voltage_to_adc(All_vout[0][i][2][J]))
-plt.show()
+            noise_samples, samples_fft = noise_computer.noise_samples(10, len(vout_f))
+            file_Vout.append(vout+noise_samples)
+            # np.save(f"{output_dir}/{ev_number}.npy", vout+noise_samples)
+            with h5py.File(f"{output_dir}/{start+ev_number}.hdf5", "w") as f:
+                dset = f.create_dataset("v_out", vout.shape, dtype=vout.dtype)
+                dset[:] = vout
+                dset = f.create_dataset("noise", noise_samples.shape, dtype=noise_samples.dtype)
+                dset[:] = noise_samples
+exit()  

@@ -222,10 +222,24 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     shower_meta_data_file = glob(f'{directory_to_roots}/shower_*_L0_*.root')[0]
     efield_file = glob(f'{directory_to_roots}/efield_*_L{L1_or_L0}_*.root')[0]
 
-    antenna_pos = uproot.open(antenna_pos_file)[
-        'trun']['du_xyz'].array().to_numpy()[0]
-    shower_meta_data = uproot.open(shower_meta_data_file)['tshower']
+    with uproot.open(antenna_pos_file) as f:
+        antenna_pos = f['trun']['du_xyz'].array().to_numpy()[0]
+    with uproot.open(shower_meta_data_file) as f:
+        shower_meta_data = f['tshower']
+        shower_core_pos = shower_meta_data['shower_core_pos'].array(
+            entry_start=start, entry_stop=stop).to_numpy()
+        zenith = shower_meta_data['zenith'].array(
+            entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
+        azimuth = shower_meta_data['azimuth'].array(
+            entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
+        energy_primary = shower_meta_data['energy_primary'].array(
+            entry_start=start, entry_stop=stop).to_numpy()
+        xmax_grams = shower_meta_data['xmax_grams'].array(
+            entry_start=start, entry_stop=stop).to_numpy()
+        xmax_pos = shower_meta_data['xmax_pos_shc'].array(
+            entry_start=start, entry_stop=stop).to_numpy()
 
+    print("Loading ROOT efield files...")
     with uproot.open(efield_file) as f:
         efield_trace = f['tefield']['trace'].array(
             entry_start=start, entry_stop=stop)
@@ -237,21 +251,11 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             entry_start=start, entry_stop=stop)
         efield_event_number = f['tefield']['event_number'].array(
             entry_start=start, entry_stop=stop)
+    print("Loaded ROOT efield files...")
 
-    shower_core_pos = shower_meta_data['shower_core_pos'].array(
-        entry_start=start, entry_stop=stop).to_numpy()
-    zenith = shower_meta_data['zenith'].array(
-        entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
-    azimuth = shower_meta_data['azimuth'].array(
-        entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
-    energy_primary = shower_meta_data['energy_primary'].array(
-        entry_start=start, entry_stop=stop).to_numpy()
-    xmax_grams = shower_meta_data['xmax_grams'].array(
-        entry_start=start, entry_stop=stop).to_numpy()
-    xmax_pos = shower_meta_data['xmax_pos_shc'].array(
-        entry_start=start, entry_stop=stop).to_numpy()
 
     xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, altitude]])
+    # xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, altitude]])
     meta_data = {
         'core_pos': shower_core_pos,
         'zenith': zenith,

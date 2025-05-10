@@ -139,8 +139,8 @@ for root_dir in all_root_dirs:
 
             # vout = voltage_to_adc(vout)
             with h5py.File(f"{output_dir}/{start+ev_number}.hdf5", "w") as f:
-                dset = f.create_dataset("v_out", vout.shape, dtype=vout.dtype)
+                dset = f.create_dataset("v_out", vout.shape, dtype=np.float16)
                 dset[:] = vout
-                dset = f.create_dataset("noise", noise_samples.shape, dtype=noise_samples.dtype)
+
+                dset = f.create_dataset("noise", noise_samples.shape, dtype=np.float16)
                 dset[:] = noise_samples
-exit()  

@@ -103,7 +103,7 @@ noise_computer = compute_noise(10., latitude,
 noise_computer.noise_rms_traces()
 output_dir_base = "./output_DC2/"
 for root_dir in all_root_dirs:
-    output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-2]
+    output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]
     os.makedirs(output_dir, exist_ok=True)
     file_Vout = []
     step = 50

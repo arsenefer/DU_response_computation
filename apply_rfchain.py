@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import uproot
 import matplotlib.pyplot as plt
 from glob import glob
@@ -7,16 +6,10 @@ import scipy as sp
 import uproot
 from functools import reduce
 
-import sys
-import os
-import scipy.signal as ssi
-import random
-from scipy.signal import butter, filtfilt, lfilter, hilbert
+from scipy.signal import butter, lfilter
 import scipy.interpolate as interp
 
-from PWF_reconstruction.utils import sph2cart, cart2sph
-
-from typing import Union, Any
+from typing import Union
 from dataclasses import dataclass
 from numbers import Number
 altitude = 1264
@@ -24,6 +17,15 @@ kb = 1.38064852e-23
 c = 299792458
 Z0 = 4 * np.pi * c * 1e-7
 
+def cart2sph(k):
+    """
+    Convert cartesian coordinate to spherical coordinate
+    """
+    r = np.linalg.norm(k, axis=1)
+    tp = np.linalg.norm(k[:, :2], axis=1)
+    theta = np.arctan2(tp, k[:, 2])
+    phi = np.arctan2(k[:, 1], k[:, 0])
+    return r, theta, phi
 
 @dataclass
 class DataTable:

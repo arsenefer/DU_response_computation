@@ -33,91 +33,35 @@ import os
 import h5py
 
 from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, compute_noise
+from input_script import *
 
-## Input section
 all_root_dirs = glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/*", )
-print(all_root_dirs)
-latitude = (90-(42.2281)) * np.pi / 180
 
-#Input traces info
-duration = 4.096*1e-6
-sampling_freq = 2e9
-out_sampling_freq = 2e9
-
-#Input noise
-All_lst_hours = np.arange(0,24,0.1)
-
-###################
-
-
-
-N_samples = int(np.round(duration * sampling_freq))
-sampling_period = 1/sampling_freq
-freqs = sp.fft.rfftfreq(N_samples, sampling_period)
-
-#Output traces info
-out_N_samples = int(np.round(duration * out_sampling_freq))
-out_sampling_period = 1/out_sampling_freq
-out_freqs = sp.fft.rfftfreq(out_N_samples, out_sampling_period)
-
-#Loading maps
-
-### S-parameters
-balun1      = np.loadtxt("./electronics/balun_in_nut.s2p", comments=['#', '!']).astype(np.float64)
-matchnet_sn = np.loadtxt("./electronics/MatchingNetworkX.s2p", comments=['#', '!']).astype(np.float64)
-matchnet_ew = np.loadtxt("./electronics/MatchingNetworkY.s2p", comments=['#', '!']).astype(np.float64)
-matchnet_z  = np.loadtxt("./electronics/MatchingNetworkZ.s2p", comments=['#', '!']).astype(np.float64)
-LNA_sn      = np.loadtxt("./electronics/LNA-X.s2p", comments=['#', '!']).astype(np.float64)
-LNA_ew      = np.loadtxt("./electronics/LNA-Y.s2p", comments=['#', '!']).astype(np.float64)
-LNA_z       = np.loadtxt("./electronics/LNA-Z.s2p", comments=['#', '!']).astype(np.float64)
-cable       = np.loadtxt("./electronics/cable+Connector.s2p", comments=['#', '!']).astype(np.float64)
-vga         = np.loadtxt("./electronics/feb+amfitler+biast.s2p", comments=['#', '!']).astype(np.float64)
-balun2      = np.loadtxt("./electronics/balun_before_ad.s2p", comments=['#', '!']).astype(np.float64)
-zload_map   = np.loadtxt("./electronics/S_balun_AD.s1p", comments=['#', '!']).astype(np.float64)
-zant_map    = np.loadtxt("./electronics/Z_ant_3.2m.csv", delimiter=",", comments=['#', '!'], skiprows=1).astype(np.float64)
-
-list_s_maps_sn = [balun1, matchnet_sn, LNA_sn, cable, vga]
-list_s_maps_ew = [balun1, matchnet_ew, LNA_ew, cable, vga]
-list_s_maps_z = [balun1, matchnet_z, LNA_z, cable, vga]
-is_db = [False, False, True, True, True]
-
-tf_sn = smap_2_tf(list_s_maps_sn, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=0)
-tf_ew = smap_2_tf(list_s_maps_ew, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=1)
-tf_z = smap_2_tf(list_s_maps_z, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=2)
-tf = np.stack([tf_sn, tf_ew, tf_z])
-
-
-path_to_GP300_EW = "./l_eff_maps/Light_GP300Antenna_EWarm_leff.npz"
-path_to_GP300_SN = "./l_eff_maps/Light_GP300Antenna_SNarm_leff.npz"
-path_to_GP300_Z = "./l_eff_maps/Light_GP300Antenna_Zarm_leff.npz"
-t_EW = open_gp300(path_to_GP300_EW)
-t_SN = open_gp300(path_to_GP300_SN)
-t_Z = open_gp300(path_to_GP300_Z)
-
-LST_radians = All_lst_hours * 15 * np.pi / 180
 noise_computer = compute_noise(10., latitude, 
-                              [f"EXPLORATION/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
+                              [f"LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
                               out_freqs, 
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_rms_traces()
+
 output_dir_base = "./output_DC2/"
+big_list= []
 for root_dir in all_root_dirs:
     output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]
     os.makedirs(output_dir, exist_ok=True)
     file_Vout = []
-    step = 50
+    step = 100
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step
         stop = upper_bound
         all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
-        for ev_number in range(len(efield_data['traces'])):
-            event_traces = efield_data['traces'][ev_number].to_numpy().astype(np.float64)
+        for ev_idx in range(len(efield_data['traces'])):
+            event_traces = efield_data['traces'][ev_idx].to_numpy().astype(np.float64)
 
             event_trace_fft = sp.fft.rfft(event_traces)
-            antenna_pos = all_antenna_pos[efield_data['du_id'][ev_number]]
-            xmax_pos = meta_data['xmax_pos'][ev_number]
-            shower_core_pos = meta_data['core_pos'][ev_number]
+            antenna_pos = all_antenna_pos[efield_data['du_id'][ev_idx]]
+            xmax_pos = meta_data['xmax_pos'][ev_idx]
+            shower_core_pos = meta_data['core_pos'][ev_idx]
 
 
             # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
@@ -135,12 +79,63 @@ for root_dir in all_root_dirs:
                                             full_response, 
                                             current_rate=2e9, target_rate=2e9)
 
-            noise_samples, samples_fft = noise_computer.noise_samples(10, len(vout_f))
 
             # vout = voltage_to_adc(vout)
-            with h5py.File(f"{output_dir}/{start+ev_number}.hdf5", "w") as f:
-                dset = f.create_dataset("v_out", vout.shape, dtype=np.float16)
+            with h5py.File(f"{output_dir}/{start+ev_idx}.hdf5", "w") as f:
+                dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
                 dset[:] = vout
 
-                dset = f.create_dataset("noise", noise_samples.shape, dtype=np.float16)
-                dset[:] = noise_samples
+                vout_down = vout[...,::4]  #Downsampling to 500MHz
+                dset = f.create_dataset("v_out_L1", vout_down.shape, dtype=np.float16)
+                dset[:] = vout_down
+
+                vout_down_alpha = vout[...,500:4096+500]  #Downsampling to keeping 1024 samples
+                vout_down_alpha = vout_down_alpha[...,::4]  #Downsampling to 500MHz
+                dset = f.create_dataset("v_out_L1_alpha", vout_down_alpha.shape, dtype=np.float16)
+                dset[:] = vout_down_alpha
+
+                du_s = efield_data['du_s'][ev_idx].to_numpy()
+                dset = f.create_dataset("du_s", len(du_s), dtype=du_s.dtype)
+                dset[:] = efield_data['du_s'][ev_idx].to_numpy()
+
+                du_ns = efield_data['du_ns'][ev_idx].to_numpy()
+                dset = f.create_dataset("du_ns", len(du_ns), dtype=du_ns.dtype)
+                dset[:] = efield_data['du_ns'][ev_idx].to_numpy()
+
+                du_id = efield_data['du_id'][ev_idx].to_numpy()
+                dset = f.create_dataset("du_id", len(du_id), dtype=du_id.dtype)
+                dset[:] = efield_data['du_id'][ev_idx].to_numpy()
+
+                dset = f.create_dataset("du_pos", antenna_pos.shape, dtype=antenna_pos.dtype)
+                dset[:] = antenna_pos
+
+                f.attrs['event_idx'] = ev_idx
+                f.attrs['event_number'] = meta_data['event_numbers'][ev_idx]
+                f.attrs['shower_core_pos'] = meta_data['core_pos'][ev_idx]
+                f.attrs['xmax_pos'] = meta_data['xmax_pos'][ev_idx]
+                f.attrs['xmax_grams'] = meta_data['xmax_grams'][ev_idx]
+                f.attrs['energy_primary'] = meta_data['energy_primary'][ev_idx]
+                f.attrs['p_types'] = str(meta_data['p_types'][ev_idx])
+                f.attrs['zenith'] = meta_data['zenith'][ev_idx]
+                f.attrs['azimuth'] = meta_data['azimuth'][ev_idx]
+            big_list.append([root_dir.split('/')[-1], ev_idx, meta_data['event_numbers'][ev_idx], meta_data['core_pos'][ev_idx],
+                                meta_data['xmax_pos'][ev_idx], meta_data['xmax_grams'][ev_idx], 
+                                meta_data['energy_primary'][ev_idx], meta_data['p_types'][ev_idx],
+                                meta_data['zenith'][ev_idx], meta_data['azimuth'][ev_idx]])
+            
+import pandas as pd
+pd.DataFrame({
+    'root_name': [x[0] for x in big_list],
+    'event_idx': [x[1] for x in big_list],
+    'event_number': [x[2] for x in big_list],
+    'core_pos': [x[3] for x in big_list],
+    'xmax_pos': [x[4] for x in big_list],
+    'xmax_grams': [x[5] for x in big_list],
+    'energy_primary': [x[6] for x in big_list],
+    'p_types': [x[7] for x in big_list],
+    'zenith': [x[8] for x in big_list],
+    'azimuth': [x[9] for x in big_list]
+}).to_csv(f"{output_dir_base}/metadata.csv", index=False)
+
+
+## Faire CSV avec 

@@ -743,8 +743,10 @@ def voltage_to_adc(voltage_traces, micro=True):
     """
     adc_bins = .9/8192
     if micro:
-        voltage_traces *= 1e-6
-    adc_values = np.clip(voltage_traces, -0.9, 0.9)
+        adc_values = voltage_traces * 1e-6
+    else:
+        adc_values = voltage_traces * 1.
+    adc_values = np.clip(adc_values, -0.9, 0.9)
     adc_values = np.round(adc_values / adc_bins).astype(np.int16)
     return adc_values
     
@@ -1152,3 +1154,20 @@ class compute_noise():
         return v_noise, v_complex_fft
 
 
+def add_jitter(du_ns, sigma=5, sample_rate=2e9, seed=None):
+    """
+    Add Gaussian jitter to the given time series.
+
+    Parameters:
+        du_ns (numpy.ndarray): The time series data to which jitter will be added.
+        sigma (float): The standard deviation of the Gaussian noise to be added in ns.
+        sample_rate (float): The sampling rate of the time series data in Hz.
+        seed (int, optional): Random seed for reproducibility.
+
+    Returns:
+        numpy.ndarray: The time series with added Gaussian jitter.
+    """
+    rng = np.random.default_rng(seed)
+    jitter_bin = np.round(rng.normal(0, sigma / (sample_rate*1e-9), size=du_ns.shape))
+    jitter = (jitter_bin * (sample_rate*1e-9)).astype(du_ns.dtype)
+    return du_ns + jitter

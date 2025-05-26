@@ -1084,14 +1084,14 @@ class compute_noise():
         N = 2 * (len(self.target_freqs)-1) 
         fs = 2 * self.target_freqs[-1]
         P_nu = self.P_nu
-        V_rms_voc_2 = 2 * Z0 * P_nu
+        V_rms_voc_2 = Z0 * P_nu #*2 # Artificial factor. Should need to be removed
         V_rms_voc_2_target = interp.interp1d(
             self.LF_freqs, V_rms_voc_2, bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
         V_rms_voc_target = V_rms_voc_2_target * N * fs / 2
         V_rms_voc_target = np.sqrt(V_rms_voc_target)
 
         self._noise_spectrum = np.abs(V_rms_voc_target * self.tf)
-        self._noise_spectrum = self._noise_spectrum / 2
+        # self._noise_spectrum = self._noise_spectrum / 2 #Artificial factor. Should need to be removed
         return self._noise_spectrum
 
     @property

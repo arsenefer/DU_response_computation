@@ -1,4 +1,4 @@
-# Here is the file to convert efield to voltage
+# Here is the file to convert efield to voltage abd to generate noise traces
 import numpy as np 
 import matplotlib.pyplot as plt
 import uproot
@@ -18,20 +18,12 @@ SMALL_SIZE = 10;MEDIUM_SIZE = 12;BIGGER_SIZE = 14
 plt.rc('font', size=BIGGER_SIZE);plt.rc('axes', titlesize=BIGGER_SIZE);plt.rc('axes', labelsize=BIGGER_SIZE);plt.rc('xtick', labelsize=MEDIUM_SIZE);plt.rc('ytick', labelsize=MEDIUM_SIZE);plt.rc('legend', fontsize=BIGGER_SIZE);plt.rc('figure', titlesize=BIGGER_SIZE)
 
 
-
-params_file1 = 'RF_params_old_leffs.json'
-params_file2 = 'RF_params_new_leffs.json'
-params_file3 = 'RF_params_new_leffs_1024_500MHz.json'
-
-with open(params_file1, 'r') as f:
-    params_RF_old = json.load(f)
+params_file = 'RF_params_new_leffs.json'
 
 
-with open(params_file2, 'r') as f:
-    params_RF_new = json.load(f)
+with open(params_file, 'r') as f:
+    params_RF = json.load(f)
 
-with open(params_file3, 'r') as f:
-    params_RF_new2 = json.load(f)
 
 def load_parameters_and_compute_stuff(params_RF):
     latitude = (90-(params_RF['latitude'])) * np.pi / 180
@@ -83,59 +75,53 @@ def load_parameters_and_compute_stuff(params_RF):
     t_EW = rfc.open_gp300(params_RF["path_to_GP300_EW"])
     t_Z = rfc.open_gp300(params_RF["path_to_GP300_Z"])
 
-    return latitude, duration, sampling_freq, out_sampling_freq, N_samples, sampling_period, freqs, out_N_samples, out_sampling_period, out_freqs, LST_radians, tf, t_SN, t_EW, t_Z
+    l_eff = [t_SN, t_EW, t_Z]
+
+    return l_eff, tf, latitude, out_freqs
+
+    #return latitude, duration, sampling_freq, out_sampling_freq, N_samples, sampling_period, freqs, out_N_samples, out_sampling_period, out_freqs, LST_radians, tf, t_SN, t_EW, t_Z
 
 
+a =  load_parameters_and_compute_stuff(params_RF)
 
-latitude_old, duration_old, sampling_freq_old, out_sampling_freq_old, N_samples_old, sampling_period_old, freqs_old, out_N_samples_old, out_sampling_period_old, out_freqs_old, LST_radians_old, tf_old, t_SN_old, t_EW_old, t_Z_old = load_parameters_and_compute_stuff(params_RF_old)
-latitude_new, duration_new, sampling_freq_new, out_sampling_freq_new, N_samples_new, sampling_period_new, freqs_new, out_N_samples_new, out_sampling_period_new, out_freqs_new, LST_radians_new, tf_new, t_SN_new, t_EW_new, t_Z_new = load_parameters_and_compute_stuff(params_RF_new)
-latitude_new2, duration_new2, sampling_freq_new2, out_sampling_freq_new2, N_samples_new2, sampling_period_new2, freqs_new2, out_N_samples_new2, out_sampling_period_new2, out_freqs_new2, LST_radians_new2, tf_new2, t_SN_new2, t_EW_new2, t_Z_new2 = load_parameters_and_compute_stuff(params_RF_new2)
-
-## Input section
-root_dir = f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/only_0_NJ/"
+l_eff = a[0]
+tf = a[1]
+latitude = a[2]
+out_freqs = a[3]
 
 
-noise_computer_old = rfc.compute_noise(1, latitude_old,
+#latitude_new, duration_new, sampling_freq_new, out_sampling_freq_new, N_samples_new, sampling_period_new, freqs_new, out_N_samples_new, out_sampling_period_new, out_freqs_new, LST_radians_new, tf_new, t_SN_new, t_EW_new, t_Z_new = load_parameters_and_compute_stuff(params_RF_new)
+
+
+noise_computer = rfc.compute_noise(1, latitude,
                               [f"EXPLORATION/LFmap/LFmapshort{i}.npy" for i in range(20, 251)],
                               np.arange(20,251)*1e6,
-                              out_freqs_old,
-                              tf_old, leff_x=t_SN_old, leff_y=t_EW_old, leff_z=t_Z_old)
+                              out_freqs,
+                              tf, leff_x=l_eff[0], leff_y=l_eff[1], leff_z=l_eff[2])
+
+noise_computer.P_nu
+noise_computer.noise_rms_traces()
 
 
-samples_old, samples_fft_old = noise_computer_old.noise_samples(3, 50)
+samples, samples_fft = noise_computer.noise_samples(3, 50, micro=False)  # THese are 8192 long, samples at 2GHz
+samples_1024 = samples[:, :, ::4][:, :, 0:1024]   # these are 1024 long, sampled at 500 MHz
+psd, f = filt.return_psd(samples, params_RF['out_sampling_freq'], freq_out=True)
+psd_1024, f_1024 = filt.return_psd(samples_1024, params_RF['out_sampling_freq']/4, freq_out=True)
 
-
-noise_computer_new = rfc.compute_noise(1, latitude_new,
-                              [f"EXPLORATION/LFmap/LFmapshort{i}.npy" for i in range(20, 251)],
-                              np.arange(20,251)*1e6,
-                              out_freqs_new,
-                              tf_new, leff_x=t_SN_new, leff_y=t_EW_new, leff_z=t_Z_new)
-
-
-samples_new, samples_fft_new = noise_computer_new.noise_samples(3, 50)
-
-
-noise_computer_new2 = rfc.compute_noise(1, latitude_new2,
-                              [f"EXPLORATION/LFmap/LFmapshort{i}.npy" for i in range(20, 251)],
-                              np.arange(20,251)*1e6,
-                              out_freqs_new2, 
-                              tf_new2, duration=duration_new2, leff_x=t_SN_new2, leff_y=t_EW_new2, leff_z=t_Z_new2)
-
-
-samples_new2, samples_fft_new2 = noise_computer_new2.noise_samples(3, 50)
-
-
-
-
-psd_old, f_old = filt.return_psd(samples_old, out_sampling_freq_old, freq_out=True)
-psd_new, f_new = filt.return_psd(samples_new, out_sampling_freq_new, freq_out=True)
-psd_new2, f_new2 = filt.return_psd(samples_new2, out_sampling_freq_new2, freq_out=True)
 
 plt.figure()
 plt.clf()
-plt.plot(f_old, psd_old.mean(axis=0)[0])
-plt.plot(f_new, psd_new.mean(axis=0)[0])
-plt.plot(f_new2, psd_new2.mean(axis=0)[0])
+plt.plot(f/1e6, psd.mean(axis=0)[0], label='mean  PSD of 8192bin long traces')
+plt.plot(f_1024/1e6, psd_1024.mean(axis=0)[0], label='mean PSD of 1024bin long traces')
+plt.plot(noise_computer.target_freqs/1e6, noise_computer.noise_variance[3, 0], label='Theoretical  Galactic noise')
+plt.title('X-axis Galactic contribution PSD')
+plt.xlabel('Frequency [MHz]')
+plt.ylabel('PSD [V^2/Hz] ')
+plt.yscale('log')
+plt.legend
+plt.ylim(1e-17, 1e-13)
+plt.xlim(0, 250)
+plt.tight_layout()
 
 
 if False:
@@ -175,45 +161,3 @@ if False:
         ####################################################################################################
         ####################################################################################################
         ####################################################################################################
-
-
-        #The code ends here, after are only plots
-
-        ant_n = 2
-
-
-
-        with uproot.open("/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/sim_Xiaodushan_20221026_030000_RUN0_CD_ZHAireS-NJ_0000/" + "voltage_13020-23098_L0_0000.root") as f:
-            mat_trace = f["tvoltage"]['trace'].array()[ev_number].to_numpy().astype(np.float64)
-            mat_trace = mat_trace[...,500:4096+500]
-            mat_fft = sp.fft.rfft(mat_trace, axis=-1)
-
-        times = np.linspace(0,duration*1e6, N_samples)
-        window = (times > 0.-1) & (times < 5)
-
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6 ))
-        psd = np.abs(vout_f)**2/(N_samples*sampling_freq) * 1e6
-        psd_mat = np.abs(mat_fft)**2/(N_samples*sampling_freq) * 1e6
-        labels = ['North', 'West', 'Z']
-        for i in range(3):
-            ax.plot(freqs[(freqs>30*1e6)&(freqs<249*1e6)]/1e6, psd[2, i, (freqs>30*1e6)&(freqs<249*1e6)], label=f"Original trace {labels[i]}")
-            ax.plot(freqs[(freqs>30*1e6)&(freqs<249*1e6)]/1e6, psd_mat[2, i, (freqs>30*1e6)&(freqs<249*1e6)], label=f"Target trace {labels[i]}", ls=':')
-        ax.legend()
-        ax.set_title(f"Comparison PSD - Voltage L0 - ev.:{ev_number}, ant.:{ant_n}")
-        ax.set_xlabel("Frequency [MHz]")
-        ax.set_ylabel("PSD [µV²/MHz]")
-        ax.set_yscale("log")
-        plt.tight_layout()
-        
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6 ))
-        labels = ['North', 'West', 'Z']
-        for i in range(0,3):
-            # ax.plot(times[window], 100*2*(vout[2, i, window]-mat_trace[2, i, window])/(mat_trace[2, i, window]), label=f"Original trace {labels[i]}")
-            ax.plot(times[window], vout[2, i, window], label=f"Remade trace {labels[i]}")
-            ax.plot(times[window], mat_trace[2, i, window], label=f"Target trace {labels[i]}", ls=':')
-        ax.legend()
-        ax.set_title(f"Comparison traces - Voltage L0 - ev.:{ev_number}, ant.:{ant_n}")
-        ax.set_xlabel("Time [µs]")
-        ax.set_ylabel("Voltage [µV]")
-        plt.tight_layout()
-        plt.show()

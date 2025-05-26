@@ -749,35 +749,6 @@ def voltage_to_adc(voltage_traces, micro=True):
     adc_values = np.clip(adc_values, -0.9, 0.9)
     adc_values = np.round(adc_values / adc_bins).astype(np.int16)
     return adc_values
-    
-def latlon2zenaz(detector_lat, lst_rad, lat_map, long_map, mod_pi=True, add_pi=False):
-    """
-    lst_rad:latitude of the detector
-    detector_lat:longitude of the detector
-    lat_map:latitude of the source
-    long_map:longitude of the source
-    add_pi: if True, add pi to the azimuth angle
-    """
-    coszenithp = + np.cos(lst_rad)*np.sin(detector_lat)*np.cos(long_map)*np.sin(lat_map) \
-        + np.sin(lst_rad)*np.sin(detector_lat)*np.sin(long_map)*np.sin(lat_map) \
-        + np.cos(detector_lat)*np.cos(lat_map)
-    coszenithp = np.clip(coszenithp, -1, 1)
-
-    NX = - np.cos(lst_rad)*np.cos(detector_lat)*np.cos(long_map)*np.sin(lat_map)\
-         - np.sin(lst_rad)*np.cos(detector_lat)*np.sin(long_map)*np.sin(lat_map)\
-        + np.sin(detector_lat)*np.cos(lat_map)
-    WX = + np.sin(lst_rad)*np.cos(long_map)*np.sin(lat_map) \
-        - np.cos(lst_rad)*np.sin(long_map)*np.sin(lat_map)
-    zenithp = np.arccos(coszenithp)
-    azimuthp = np.arctan2(WX, NX)
-
-    assert add_pi ^ mod_pi, "Exactly one of add_pi or mod_pi should be True"
-
-    if add_pi:
-        azimuthp = azimuthp + np.pi
-    elif mod_pi:
-        azimuthp = azimuthp % (2*np.pi)
-    return zenithp, azimuthp
 
 def plot_quantities(lst_rad, freq_idx, all_zenith, all_azimuth, leff_interpolated_theta, leff_interpolated_phi, A_eff, B_nu, long_map, lat_map, detector_lat):
     """
@@ -863,6 +834,7 @@ def plot_quantities(lst_rad, freq_idx, all_zenith, all_azimuth, leff_interpolate
     axs.T[1, 2].set_title('$B_\\nu$ [W.m$^{-2}$.Hz$^{-1}$.sr$^{-1}$]')
     plt.tight_layout()
 
+
 class compute_noise():
     def __init__(self, 
                  lst_time_resolution, 
@@ -908,8 +880,28 @@ class compute_noise():
 
         self.long_map, self.lat_map, _ = np.load(list_temp_files[0])
 
+
+        lat_arr = np.concatenate([[0], 0.5*(self.lat_map[0,1:] + self.lat_map[0, :-1]), [0]])
+        lat_arr[-1] = np.pi
+
+        long_arr = np.concatenate([[0], 0.5*(self.long_map[1:, 0] + self.long_map[:-1, 0]), [0]])
+        long_arr[-1] = 2 * np.pi
+
+        lat_arr = np.diff(lat_arr)
+        long_arr = np.diff(long_arr)
+        
+        self.delta_lat2, self.delta_long2 = np.meshgrid(lat_arr, long_arr)
+
+
+
+
         self.delta_lat = np.abs(self.lat_map[0, 0]-self.lat_map[0, 1])
         self.delta_long = np.abs(self.long_map[0, 0]-self.long_map[1, 0])
+
+        # self.delta_lat = 5 * np.pi / 180 # np.abs(self.lat_map[0, 0]-self.lat_map[0, 1])
+        # self.delta_long = 5 * np.pi / 180 # np.abs(self.long_map[0, 0]-self.long_map[1, 0])
+
+
 
         assert (type(leff_x) is not type(None)) or (type(leff_y) is not type(None)) or (type(
             leff_z) is not type(None)), "At least one of leff_x, leff_y, leff_z should be provided"
@@ -935,7 +927,9 @@ class compute_noise():
         n_freqs = tf_rfchain.shape[-1]
         self.tf = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
         )(target_freqs)
+        self.tf_lfmap = tf_rfchain
         self.target_freqs = target_freqs
+        self.duration = duration
         
     @property
     def lst_rads(self):
@@ -1016,10 +1010,13 @@ class compute_noise():
 
         """
         P_nuxyz = np.zeros((len(self.lst_rads), 3, len(self.LF_freqs)))
+        B_nuxyz = np.zeros((len(self.lst_rads), 3, len(self.LF_freqs)))
+        A_eff_nuxyz = np.zeros((len(self.lst_rads), 3, len(self.LF_freqs)))
+
         for lst_idx, lst_rad in enumerate(self.lst_rads[:]):
             print(
                 f"Calculating noise power for LST {lst_rad*12/np.pi:.2f} hours")
-            all_zenith, all_azimuth = self.latlon2zenaz(lst_rad, mod_pi=True)
+            all_zenith, all_azimuth = self.latlon2zenaz((lst_rad+np.pi)%(2*np.pi), mod_pi=True)
 
             for coord_idx, l_effs in enumerate([(self.leff_x_theta_reim, self.leff_x_phi_reim),
                                                (self.leff_y_theta_reim,
@@ -1045,9 +1042,11 @@ class compute_noise():
 
                 A_eff = np.abs(leff_interpolated_theta) ** 2 + \
                     np.abs(leff_interpolated_phi)**2
+                print(A_eff.shape)
                 for freq_idx, freq in enumerate(self.LF_freqs):
                     temp_map = self.get_temp_map(freq_idx)
                     B_nu = 2 * (freq)**2 * kb * temp_map/(c**2)
+
                     if (np.abs(freq - 95e6) < 10) and ((lst_rad*12/np.pi) % 12 == 6) and plot:
                         plot_quantities(lst_rad, freq_idx, all_zenith, all_azimuth,
                                         leff_interpolated_theta, leff_interpolated_phi, A_eff, B_nu, self.long_map, self.lat_map, self.detector_lat)
@@ -1055,12 +1054,20 @@ class compute_noise():
 
                     P_nu = 1/2 * \
                         A_eff[freq_idx] * B_nu * \
-                        np.sin(self.lat_map) * self.delta_lat * self.delta_long
+                        np.sin(self.lat_map) * self.delta_lat2 * self.delta_long2
+                    
                     P_nu = np.sum(P_nu)
                     P_nuxyz[lst_idx, coord_idx, freq_idx] = P_nu
+                    B_nuxyz[lst_idx, coord_idx, freq_idx] = np.sum(B_nu)
+                    A_eff_nuxyz[lst_idx, coord_idx, freq_idx] = np.sum(A_eff[freq_idx]* np.sin(self.lat_map)) 
 
         P_nuxyz = np.array(P_nuxyz)
-        self._P_nu = P_nuxyz
+        B_nuxyz = np.array(B_nuxyz)
+        A_eff_nuxyz = np.array(A_eff_nuxyz)
+        self._B_nu = P_nuxyz
+        self._A_eff_nu = A_eff_nuxyz
+        self._P_nu = P_nuxyz   # W/Hz
+
         return P_nuxyz
     
     @property
@@ -1072,6 +1079,12 @@ class compute_noise():
             return self.noise_power()
         return self._P_nu
 
+    def get_voc2_Vout2(self):
+
+        Voc2 = self.P_nu * 120 * np.pi   ## V^2/Hz poutr les 221 frequqnce de LFmap
+        Vout2 = Voc2 * np.abs(self.tf_lfmap) * np.abs(self.tf_lfmap)
+        return Voc2, Vout2
+
     def noise_rms_traces(self):
         """
         Calculate the noise RMS traces.
@@ -1081,17 +1094,21 @@ class compute_noise():
         Returns:
             numpy.ndarray: The noise RMS traces.
         """
-        N = 2 * (len(self.target_freqs)-1) 
-        fs = 2 * self.target_freqs[-1]
+        # N = 2 * (len(self.target_freqs)-1) 
+        # fs = 2 * self.target_freqs[-1]
         P_nu = self.P_nu
-        V_rms_voc_2 = 2 * Z0 * P_nu
+        V_rms_voc_2 = Z0 * P_nu  # *2  ce facteur 2 est suspect?  
+
         V_rms_voc_2_target = interp.interp1d(
             self.LF_freqs, V_rms_voc_2, bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
-        V_rms_voc_target = V_rms_voc_2_target * N * fs / 2
-        V_rms_voc_target = np.sqrt(V_rms_voc_target)
 
-        self._noise_spectrum = np.abs(V_rms_voc_target * self.tf)
-        self._noise_spectrum = self._noise_spectrum / 2
+        self.noise_variance = np.abs(V_rms_voc_2_target * self.tf * self.tf)
+
+        # V_rms_voc_target = V_rms_voc_2_target * N * fs / 2
+        # V_rms_voc_target = np.sqrt(V_rms_voc_target)
+
+        self._noise_spectrum = np.sqrt(self.noise_variance)
+        # self._noise_spectrum = self._noise_spectrum
         return self._noise_spectrum
 
     @property
@@ -1139,12 +1156,21 @@ class compute_noise():
         """
 
         lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
+
         n_freqs = len(self.target_freqs)
 
+        len_trace = int(np.round(self.target_freqs[-1] * 2 *self.duration))
+
+        freq_sampling = self.target_freqs[-1] * 2 
+
         rng = np.random.default_rng(seed)
-        
-        amp = rng.normal(loc=0, scale=self.noise_spectrum[lst_idx], size=(
+        sigma = self.noise_spectrum[lst_idx] * np.sqrt(len_trace * freq_sampling / 2)
+
+        # amp = rng.normal(loc=0, scale=self.noise_spectrum[lst_idx], size=(
+        #     n_samples, 3, len(self.target_freqs)))
+        amp = rng.normal(loc=0, scale=sigma, size=(
             n_samples, 3, len(self.target_freqs)))
+        
         phase = 2 * np.pi * rng.random(size=(n_samples, 3, n_freqs))
         v_complex_fft = amp * np.exp(1j*phase)
         v_noise = np.fft.irfft(v_complex_fft, axis=-1)

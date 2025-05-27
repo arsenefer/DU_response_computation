@@ -1,5 +1,6 @@
 import numpy as np
 import uproot
+import os
 import matplotlib.pyplot as plt
 from glob import glob
 import scipy as sp
@@ -16,6 +17,67 @@ altitude = 1264
 kb = 1.38064852e-23
 c = 299792458
 Z0 = 4 * np.pi * c * 1e-7
+
+
+
+def load_parameters_and_compute_stuff(params_RF):
+    latitude = (90-(params_RF['latitude'])) * np.pi / 180
+
+    #Input traces info
+    duration = params_RF['duration']
+    sampling_freq = params_RF['sampling_freq']
+    out_sampling_freq = params_RF['out_sampling_freq']
+
+    N_samples = int(np.round(duration * sampling_freq))
+    sampling_period = 1/sampling_freq
+    freqs = sp.fft.rfftfreq(N_samples, sampling_period)
+
+    #Output traces info
+    out_N_samples = int(np.round(duration * out_sampling_freq))
+    out_sampling_period = 1/out_sampling_freq
+    out_freqs = sp.fft.rfftfreq(out_N_samples, out_sampling_period)
+
+    #Input noise
+    All_lst_hours = np.arange(0, 24, 0.1)
+    LST_radians = All_lst_hours * 15 * np.pi / 180
+
+    s_parameters_path = params_RF['s_parameters_path']
+
+    balun1      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun1_filename"]), comments=['#', '!']).astype(np.float64)
+    matchnet_sn = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_sn_filename"]), comments=['#', '!']).astype(np.float64)
+    matchnet_ew = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_ew_filename"]), comments=['#', '!']).astype(np.float64)
+    matchnet_z  = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_z_filename"]), comments=['#', '!']).astype(np.float64)
+    LNA_sn      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_sn_filename"]), comments=['#', '!']).astype(np.float64)
+    LNA_ew      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_ew_filename"]), comments=['#', '!']).astype(np.float64)
+    LNA_z       = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_z_filename"]), comments=['#', '!']).astype(np.float64)
+    cable       = np.loadtxt(os.path.join(s_parameters_path, params_RF["cable_filename"]), comments=['#', '!']).astype(np.float64)
+    vga         = np.loadtxt(os.path.join(s_parameters_path, params_RF["vga_filename"]), comments=['#', '!']).astype(np.float64)
+    balun2      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun2_filename"]), comments=['#', '!']).astype(np.float64)
+    zload_map   = np.loadtxt(os.path.join(s_parameters_path, params_RF["zload_map_filename"]), comments=['#', '!']).astype(np.float64)
+    zant_map    = np.loadtxt(os.path.join(s_parameters_path, params_RF["zant_map_filename"]), delimiter=",", comments=['#', '!'], skiprows=1).astype(np.float64)
+
+    list_s_maps_sn = [balun1, matchnet_sn, LNA_sn, cable, vga]
+    list_s_maps_ew = [balun1, matchnet_ew, LNA_ew, cable, vga]
+    list_s_maps_z = [balun1, matchnet_z, LNA_z, cable, vga]
+    is_db = [False, False, True, True, True]
+
+    tf_sn = smap_2_tf(list_s_maps_sn, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=0)
+    tf_ew = smap_2_tf(list_s_maps_ew, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=1)
+    tf_z = smap_2_tf(list_s_maps_z, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=2)
+    tf = np.stack([tf_sn, tf_ew, tf_z])
+
+    t_SN = open_gp300(params_RF["path_to_GP300_SN"])
+    t_EW = open_gp300(params_RF["path_to_GP300_EW"])
+    t_Z = open_gp300(params_RF["path_to_GP300_Z"])
+
+    l_eff = [t_SN, t_EW, t_Z]
+
+    return l_eff, tf, latitude, out_freqs
+
+    #return latitude, duration, sampling_freq, out_sampling_freq, N_samples, sampling_period, freqs, out_N_samples, out_sampling_period, out_freqs, LST_radians, tf, t_SN, t_EW, t_Z
+
+
+
 
 def cart2sph(k):
     """
@@ -843,7 +905,7 @@ class compute_noise():
                  LF_freqs, 
                  target_freqs,
                  tf_rfchain,
-                 duration=4.096e-6,
+                 duration,
                  leff_x=None, 
                  leff_y=None, 
                  leff_z=None):
@@ -864,7 +926,7 @@ class compute_noise():
         tf_rfchain : array
             Transfer function of the RF chain.
         duration : float, optional
-            Duration of the signal in seconds. Default is 4.096e-6.
+            Duration of the signal in seconds.
         leff_x : object, optional
             Effective length data for the x-direction. Default is None.
         leff_y : object, optional
@@ -891,9 +953,6 @@ class compute_noise():
         long_arr = np.diff(long_arr)
         
         self.delta_lat2, self.delta_long2 = np.meshgrid(lat_arr, long_arr)
-
-
-
 
         self.delta_lat = np.abs(self.lat_map[0, 0]-self.lat_map[0, 1])
         self.delta_long = np.abs(self.long_map[0, 0]-self.long_map[1, 0])

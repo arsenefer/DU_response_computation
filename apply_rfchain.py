@@ -13,6 +13,7 @@ import scipy.interpolate as interp
 from typing import Union
 from dataclasses import dataclass
 from numbers import Number
+import glob
 altitude = 1264
 kb = 1.38064852e-23
 c = 299792458
@@ -1197,6 +1198,51 @@ class compute_noise():
         np.save(f'{directory}/{name}.npy', self.noise_spectrum)
         np.save(f'{directory}/{name}_frequencies.npy', self.LF_freqs)
         np.save(f'{directory}/{name}_lsthours.npy', self.lst_hours)
+
+
+    def noise_samples_from_existing_spectra(self, directory, n_samples=1, seed=None, micro=True):
+        ### patch introduced to genrate noise form AN mean spectra.
+        ## input is ADC spectra 
+        list_files = glob.glob(directory +'/*.npy')
+        n_files = len(list_files)
+        psds = []
+        for fi in list_files:
+            psds.append(np.load(fi))
+        psds = np.vstack(psds)
+
+        n_samples_per_files = n_samples // n_files
+
+        n_freqs = psds.shape[-1]
+        len_trace = 2 * (n_freqs - 1 )
+
+        rng = np.random.default_rng(seed)
+
+        freq_sampling = self.target_freqs[-1] * 2
+
+        amp = []
+        phase = []
+
+        for i in range(n_files):
+            sigma = np.sqrt(psds[i]) * np.sqrt(len_trace * freq_sampling / 2)
+            amp.append(
+                rng.normal(loc=0, scale=sigma, size=(
+                n_samples_per_files, 3, len(self.target_freqs)))
+            )
+            phase.append(2 * np.pi * rng.random(size=(n_samples_per_files, 3, n_freqs)))
+        remainder = n_samples % n_files
+        if remainder != 0:
+            sigma = np.sqrt(psds[np.random.randint(n_files)]) * np.sqrt(len_trace * freq_sampling / 2)
+            amp.append(
+                rng.normal(loc=0, scale=sigma, size=(
+                remainder, 3, len(self.target_freqs)))
+            )
+            phase.append(2 * np.pi * rng.random(size=(remainder, 3, n_freqs)))
+
+        amp = np.vstack(amp)
+        phase = np.vstack(phase)
+        v_complex_fft = amp * np.exp(1j*phase)
+        v_noise = np.fft.irfft(v_complex_fft, axis=-1)
+        return v_noise, v_complex_fft
 
 
     def noise_samples(self, lst_hour, n_samples=1, seed=None, micro=True):

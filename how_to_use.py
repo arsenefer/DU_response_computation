@@ -128,7 +128,7 @@ noise_computer = rfc.compute_noise(1, latitude,
 noise_computer.P_nu
 noise_computer.noise_rms_traces()
 
-noise_computer2 = rfc.compute_noise(1, latitude2,
+noise_computer2 = rfc.compute_noise(12, latitude2,
                               [f"EXPLORATION/LFmap/LFmapshort{i}.npy" for i in range(20, 251)],
                               np.arange(20,251)*1e6,
                               out_freqs2,

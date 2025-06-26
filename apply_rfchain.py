@@ -1199,6 +1199,18 @@ class compute_noise():
         np.save(f'{directory}/{name}_frequencies.npy', self.LF_freqs)
         np.save(f'{directory}/{name}_lsthours.npy', self.lst_hours)
 
+    def noise_samples_from_existing_traces(self, trace_file_path, n_samples=1, seed=None, micro=True):
+        trace_arr = np.load(trace_file_path).squeeze()
+
+        n_traces = trace_arr.shape[0]
+        print('there are {} trace ib this noise file'.format(n_traces))
+
+        perm = np.random.permutation(n_traces)
+
+        ids = perm[0:n_samples]
+
+        gal_noise = trace_arr[ids]
+        return gal_noise
 
     def noise_samples_from_existing_spectra(self, directory, n_samples=1, seed=None, micro=True):
         ### patch introduced to genrate noise form AN mean spectra.
@@ -1206,8 +1218,13 @@ class compute_noise():
         list_files = glob.glob(directory +'/*.npy')
         n_files = len(list_files)
         psds = []
-        for fi in list_files:
-            psds.append(np.load(fi))
+
+        if directory == '/sps/grand/blevy/sims/noise_spectrum_June_MD/':
+            for fi in list_files:
+                psds.append(np.load(fi)[:, 1:, 0::4])
+        else:
+            for fi in list_files:
+                psds.append(np.load(fi))
         psds = np.vstack(psds)
 
         n_samples_per_files = n_samples // n_files
@@ -1224,6 +1241,7 @@ class compute_noise():
 
         for i in range(n_files):
             sigma = np.sqrt(psds[i]) * np.sqrt(len_trace * freq_sampling / 2)
+            
             amp.append(
                 rng.normal(loc=0, scale=sigma, size=(
                 n_samples_per_files, 3, len(self.target_freqs)))

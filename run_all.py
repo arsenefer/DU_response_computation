@@ -6,22 +6,22 @@ SMALL_SIZE = 10;MEDIUM_SIZE = 12;BIGGER_SIZE = 14
 plt.rc('font', size=BIGGER_SIZE);plt.rc('axes', titlesize=BIGGER_SIZE);plt.rc('axes', labelsize=BIGGER_SIZE);plt.rc('xtick', labelsize=MEDIUM_SIZE);plt.rc('ytick', labelsize=MEDIUM_SIZE);plt.rc('legend', fontsize=BIGGER_SIZE);plt.rc('figure', titlesize=BIGGER_SIZE)
 import uproot 
 import scipy as sp
-from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, compute_noise
+from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, compute_noise, voltage_to_adc
 from input_script import *
 
 ## Input section
 root_dir = f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/only_0_NJ/"
 
 
-noise_computer = compute_noise(1, latitude, 
+noise_computer = compute_noise(6, latitude, 
                               [f"LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
                               out_freqs, 
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 
-samples_fft, samples = noise_computer.noise_samples(3, 1000)
-
-
+samples, samples_fft = noise_computer.noise_samples(6, 1000)
+samples = voltage_to_adc(samples)
+print(np.linalg.norm(samples.std(axis=-1)[:,:2], axis=-1).mean())
 all_antenna_pos, meta_data, efield_data = open_event_root(root_dir)
 for ev_number in range(0, 10):
     event_traces = efield_data['traces'][ev_number].to_numpy().astype(np.float64)
@@ -34,8 +34,8 @@ for ev_number in range(0, 10):
     shower_core_pos = meta_data['core_pos'][ev_number]
 
 
-    theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
-    # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
+    # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
+    theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
     l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
     l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
     l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
@@ -43,7 +43,7 @@ for ev_number in range(0, 10):
 
     full_response = l_eff * tf[None,None,...]
     
-    
+    print(full_response.shape)
         
     vout, vout_f = efield_2_voltage(event_trace_fft, 
                                     full_response, 
@@ -66,7 +66,7 @@ for ev_number in range(0, 10):
 
     with uproot.open("/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/sim_Xiaodushan_20221026_030000_RUN0_CD_ZHAireS-NJ_0000/" + "voltage_13020-23098_L0_0000.root") as f:
         mat_trace = f["tvoltage"]['trace'].array()[ev_number].to_numpy().astype(np.float64)
-        mat_trace = mat_trace[...,500:4096+500]
+        # mat_trace = mat_trace[...,500:4096+500]
         mat_fft = sp.fft.rfft(mat_trace, axis=-1)
 
     times = np.linspace(0,duration*1e6, N_samples)

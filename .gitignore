@@ -1,7 +1,9 @@
 EXPLORATION
 electronics*
 l_eff_maps*
+files*
 LFmap
 __pycache__
 *.pyc
 *.zip
+*.ipynb

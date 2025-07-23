@@ -35,7 +35,7 @@ import h5py
 from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, compute_noise
 from input_script import *
 
-all_root_dirs = glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/*", )
+all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/sim_Xiaodushan_*", ))
 
 noise_computer = compute_noise(10., latitude, 
                               [f"LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
@@ -44,16 +44,25 @@ noise_computer = compute_noise(10., latitude,
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_rms_traces()
 
-output_dir_base = "./output_DC2/"
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff/"
 big_list= []
 for root_dir in all_root_dirs:
     output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]
     os.makedirs(output_dir, exist_ok=True)
+    print(output_dir)
     file_Vout = []
-    step = 100
+    step = 200
+    existing_files = set(glob(f"{output_dir}/*.hdf5"))
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step
         stop = upper_bound
+        for ev_idx in range(start, stop):
+            if f"{output_dir}/{ev_idx}.hdf5" in existing_files:
+                start = ev_idx + 1
+                print(f"Skipping {ev_idx} in {root_dir} as it already exists.")
+        if start == stop:
+            continue
+        print(f"Processing events {start} to {stop} in {root_dir}")
         all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
         for ev_idx in range(len(efield_data['traces'])):
             event_traces = efield_data['traces'][ev_idx].to_numpy().astype(np.float64)

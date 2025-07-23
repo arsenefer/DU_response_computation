@@ -242,11 +242,9 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             entry_start=start, entry_stop=stop).to_numpy()
         ptypes = shower_meta_data['primary_type'].array(
             entry_start=start, entry_stop=stop).to_numpy()
-        print(shower_meta_data.keys())
         event_numbers = shower_meta_data['event_number'].array(
             entry_start=start, entry_stop=stop).to_numpy()
 
-    print("Loading ROOT efield files...")
     with uproot.open(efield_file) as f:
         efield_trace = f['tefield']['trace'].array(
             entry_start=start, entry_stop=stop)
@@ -258,7 +256,6 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             entry_start=start, entry_stop=stop)
         efield_event_number = f['tefield']['event_number'].array(
             entry_start=start, entry_stop=stop)
-    print("Loaded ROOT efield files...")
 
 
     xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, altitude]])

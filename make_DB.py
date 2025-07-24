@@ -32,7 +32,9 @@ from glob import glob
 import os
 import h5py
 
-from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, compute_noise
+from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc 
+from noise import compute_noise
+
 from input_script import *
 
 all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/sim_Xiaodushan_*", ))

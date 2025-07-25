@@ -13,8 +13,6 @@ import scipy.interpolate as interp
 from typing import Union
 from dataclasses import dataclass
 from numbers import Number
-import glob
-altitude = 1264
 kb = 1.38064852e-23
 c = 299792458
 Z0 = 4 * np.pi * c * 1e-7
@@ -84,6 +82,15 @@ def cart2sph(k):
     theta = np.arctan2(tp, k[:, 2])
     phi = np.arctan2(k[:, 1], k[:, 0])
     return r, theta, phi
+
+def sph2cart(theta, phi):
+    """
+    Convert spherical coordinate to cartesian coordinate
+    """
+    x = np.cos(phi) * np.sin(theta)
+    y = np.sin(phi) * np.sin(theta)
+    z = np.cos(theta)
+    return x, y, z
 
 @dataclass
 class DataTable:
@@ -315,9 +322,16 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
         efield_event_number = f['tefield']['event_number'].array(
             entry_start=start, entry_stop=stop)
 
+    
+    xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, 1264]])
 
-    xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, altitude]])
     # xmax_pos = xmax_pos + shower_core_pos
+    kx,ky,kz = sph2cart(zenith, azimuth)
+    k = -np.array([kx, ky, kz]).T
+    k_rec = shower_core_pos - xmax_pos
+    k_rec = k_rec / np.linalg.norm(k_rec, axis=-1, keepdims=True)
+    assert np.allclose(np.sum(k*k_rec, axis=1), 1), f"The direction of the shower core and xmax position do not match. dot : {np.sum(k*k_rec, axis=1)}"
+    print("Xmax and showercore correctly corrected")
     meta_data = {
         "event_numbers": event_numbers,
         'core_pos': shower_core_pos,
@@ -763,9 +777,9 @@ def efield_2_voltage(
 
     Parameters:
         event_trace_fft (numpy.ndarray): A 3D array containing the FFT of the electric field 
-            traces. The shape is expected to be (n_events, n_channels, n_frequencies).
+            traces. The shape is expected to be (n_events, n_polar_efield, n_frequencies).
         full_response (numpy.ndarray): A 4D array representing the full system response. 
-            The shape is expected to be (n_events, n_channels, n_frequencies_in_band, n_frequencies).
+            The shape is expected to be (n_events, n_polar_efield, n_channels, n_frequencies).
         target_rate (float, optional): The target sampling rate for the output time-domain 
             voltage signal, in Hz. Default is 2e9 (2 GHz).
         current_rate (float, optional): The current sampling rate of the input frequency-domain 

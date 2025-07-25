@@ -81,7 +81,7 @@ class compute_noise():
 
 
         delta_lat_array = np.diff(self.lat_map, axis=1)
-        delta_lat_array = np.concatenate((delta_lat_array, delta_lat_array[:, -1:]))
+        delta_lat_array = np.concatenate((delta_lat_array, delta_lat_array[:, -1:]), axis=1)
 
         delta_long_array = np.diff(self.long_map, axis=0)
         delta_long_array = np.concatenate((delta_long_array, delta_long_array[-1:, :]), axis=0)
@@ -115,6 +115,8 @@ class compute_noise():
         n_freqs = tf_rfchain.shape[-1]
         self.tf_target = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
         )(target_freqs)
+        self.tf_LF = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
+        )(LF_freqs)
         self.target_freqs = target_freqs
         
     @property
@@ -234,7 +236,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
     def Voc_psd(self):
         return  self.P_nu * Z0   ## V^2/Hz poutr les 221 frequqnce de LFmap
     def Vout_psd(self):
-        return self.Voc_psd() * np.abs(self.tf_target) * np.abs(self.tf_target)
+        return self.Voc_psd() * np.abs(self.tf_LF) * np.abs(self.tf_LF)
     
     def noise_fourrier_traces(self):
         """
@@ -252,23 +254,23 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         
         self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
                                               bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
-        self._noise_spectrum_fourrier = np.sqrt(self.noise_variance  * N * fs / 2)  # V/Hz
-        return self._noise_spectrum_fourrier
+        self._noise_fourrier_spectrum = np.sqrt(self.noise_variance  * N * fs / 2)  # V/Hz
+        return self._noise_fourrier_spectrum
 
     @property
-    def noise_spectrum(self):
-        if hasattr(self, '_noise_spectrum_fourrier'):
-            return self._noise_spectrum_fourrier
+    def noise_fourrier_spectrum(self):
+        if hasattr(self, '_noise_fourrier_spectrum'):
+            return self._noise_fourrier_spectrum
         elif hasattr(self, 'path_to_noise_spectrum'):
-            self._noise_spectrum_fourrier = np.load(self.path_to_noise_spectrum)
+            self._noise_fourrier_spectrum = np.load(self.path_to_noise_spectrum)
             self.LF_freqs = np.load(self.path_to_noise_spectrum.replace(
                 '.npy', '_frequencies.npy'))
             self.lst_hours = np.load(self.path_to_noise_spectrum.replace(
                 '.npy', '_lsthours.npy'))
-            return 
-        return self.noise_rms_traces()
+            return self._noise_fourrier_spectrum
+        return self.noise_fourrier_traces()
 
-    def save_spectrum(self, directory='.', name='noise_spectrum'):
+    def save_spectrum(self, directory='.', name='noise_fourrier_spectrum'):
         """
         Save the noise spectrum to a file.
 
@@ -276,10 +278,10 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
             directory (str): Directory where the file will be saved.
             name (str): Name of the file (without extension).
         """
-        if not (hasattr(self, 'noise_spectrum')):
+        if not (hasattr(self, 'noise_fourrier_spectrum')):
             raise ValueError(
                 "Noise spectrum not computed. Run noise_rms_traces(target_frqs, tf_rfchain) first.")
-        np.save(f'{directory}/{name}.npy', self.noise_spectrum)
+        np.save(f'{directory}/{name}.npy', self.noise_fourrier_spectrum)
         np.save(f'{directory}/{name}_frequencies.npy', self.LF_freqs)
         np.save(f'{directory}/{name}_lsthours.npy', self.lst_hours)
 
@@ -304,7 +306,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
 
         rng = np.random.default_rng(seed)
         
-        amp = rng.normal(loc=0, scale=self.noise_spectrum[lst_idx], size=(
+        amp = rng.normal(loc=0, scale=self.noise_fourrier_spectrum[lst_idx], size=(
             n_samples, 3, len(self.target_freqs)))
         phase = 2 * np.pi * rng.random(size=(n_samples, 3, n_freqs))
         v_complex_fft = amp * np.exp(1j*phase)

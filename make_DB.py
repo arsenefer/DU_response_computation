@@ -31,29 +31,38 @@ import scipy as sp
 from glob import glob
 import os
 import h5py
+import json
 
 from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc 
 from noise import compute_noise
 
-from input_script import *
+from make_input import load_input_params_from_dict
 
+params_file = 'antenna_configs/RF_params_new_leffs_2048_500MHz.json'
+with open(params_file, 'r') as f:
+    params_RF = json.load(f)
+
+duration, latitude, altitude, input_sampling_freq, out_sampling_freq, \
+N_samples, sampling_period, freqs, \
+out_N_samples, out_sampling_period, out_freqs, \
+LST_radians, tf, t_SN, t_EW, t_Z = load_input_params_from_dict(params_RF)
 all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/sim_Xiaodushan_*", ))
 
 noise_computer = compute_noise(10., latitude, 
-                              [f"LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
+                              [f"files/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
                               out_freqs, 
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
-noise_computer.noise_rms_traces()
+noise_computer.noise_fourrier_spectrum
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff/"
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_bin/"
 big_list= []
 for root_dir in all_root_dirs:
     output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]
     os.makedirs(output_dir, exist_ok=True)
     print(output_dir)
     file_Vout = []
-    step = 200
+    step = 20
     existing_files = set(glob(f"{output_dir}/*.hdf5"))
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step
@@ -77,9 +86,9 @@ for root_dir in all_root_dirs:
 
             # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
             theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
-            l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-            l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-            l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
+            l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
+            l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
+            l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
             l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
 
             full_response = l_eff * tf[None,None,...]
@@ -97,6 +106,8 @@ for root_dir in all_root_dirs:
                 dset[:] = vout
 
                 vout_down = vout[...,::4]  #Downsampling to 500MHz
+                print(f"vout shape: {vout.shape}")
+                print(f"vout_down shape: {vout_down.shape}")
                 dset = f.create_dataset("v_out_L1", vout_down.shape, dtype=np.float16)
                 dset[:] = vout_down
 

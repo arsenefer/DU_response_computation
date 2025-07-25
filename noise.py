@@ -216,7 +216,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
 
                     P_nu = 1/2 * \
                         A_eff[freq_idx] * B_nu * \
-                        np.sin(self.lat_map) * self.delta_lat * self.delta_long
+                        np.sin(self.lat_map) * self.delta_lat2 * self.delta_long2
                     P_nu = np.sum(P_nu)
                     P_nuxyz[lst_idx, coord_idx, freq_idx] = P_nu
 

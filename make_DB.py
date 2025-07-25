@@ -33,12 +33,12 @@ import os
 import h5py
 import json
 
-from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc 
+from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, make_full_response_matrix
 from noise import compute_noise
 
 from make_input import load_input_params_from_dict
 
-params_file = 'antenna_configs/RF_params_new_leffs_2048_500MHz.json'
+params_file = 'antenna_configs/RF_params_new_leffs.json'
 with open(params_file, 'r') as f:
     params_RF = json.load(f)
 
@@ -85,20 +85,15 @@ for root_dir in all_root_dirs:
 
 
             # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
+
+
+
             theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
-            l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
-            l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
-            l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
-            l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
+            full_response_matrix = make_full_response_matrix(t_SN, t_EW, t_Z, theta_du, phi_du, tf, input_sampling_freq=input_sampling_freq, duration=duration)
 
-            full_response = l_eff * tf[None,None,...]
-            
-            
-                
             vout, vout_f = efield_2_voltage(event_trace_fft, 
-                                            full_response, 
+                                            full_response_matrix, 
                                             current_rate=2e9, target_rate=2e9)
-
 
             # vout = voltage_to_adc(vout)
             with h5py.File(f"{output_dir}/{start+ev_idx}.hdf5", "w") as f:

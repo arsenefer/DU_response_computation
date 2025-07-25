@@ -441,156 +441,6 @@ def get_leff(t, antenna_percieved_theta, antenna_percieved_phi, duration=4.096e-
     return leff_cartesian
 
 
-def apply_leff(event_E_trace, t, event_pos, event_xmax, duration=4.096e-6, input_sampling_freq=2e9):
-    """
-    Apply the effective length (L_eff) transformation to an event's electric field time traces.
-
-    This function:
-    1. Decomposes the input E-field into θ and φ components based on the perceived direction
-       from the antenna to the event.
-    2. Applies a bandpass filter to remove frequencies outside the 50–250 MHz range.
-    3. Restricts the signal further to the 20–300 MHz range when applying the antenna response.
-    4. Retrieves the antenna response data (L_eff) for the θ and φ components, interpolates
-       it at the frequency points of interest, and applies it in the frequency domain.
-    5. Returns the inverse Fourier transform of the combined θ and φ voltage signals.
-
-    Parameters
-    ----------
-    event_E_trace : ndarray
-        The electric field time traces of shape (N_antennas, 3, N_samples), where each trace
-        is a 3D vector over time.
-    t : ndarray
-        Dataclass containing the effective lengths of the antenna.
-    event_pos : ndarray
-        The position array of the antennas in meters with shape (n, 3).
-    event_xmax : ndarray
-        The 3D position array (x, y, z) of the maximum emission in meters.
-    N_sample : int, optional
-        Number of samples for the FFT. Default is 8192.
-    duration : float, optional
-        Duration of the signal in seconds. Default is 4.096e-6.
-
-    Returns
-    -------
-    ndarray
-        The time-domain voltage signals (N_antennas, N_samples), representing the sum of θ and
-        φ components after applying the bandpass filter and the antenna response.
-    """
-    sampling_period = 1 / input_sampling_freq
-    N_sample = int(np.round(duration * input_sampling_freq))
-    input_freqs = sp.fft.rfftfreq(N_sample, d=sampling_period)  # Frequency axis
-
-    antenna_perceived_direction = event_pos - event_xmax
-    dist, antenna_perceived_theta, antenna_perceived_phi = cart2sph(
-        -antenna_perceived_direction)
-
-
-    print(
-        f'Antenna response between {t.frequency.min() / 1e6:.0f} MHz and {t.frequency.max() / 1e6:.0f} MHz')
-
-    antenna_response_theta = interp.interpn(
-        (t.theta, t.phi),
-        t.leff_theta_reim.swapaxes(0, 2),
-        (antenna_perceived_theta[:] * 180 / np.pi,
-         antenna_perceived_phi[:] * 180 / np.pi),
-        method='linear',
-        bounds_error=False,
-        fill_value=0
-    )
-    antenna_response_phi = interp.interpn(
-        (t.theta, t.phi),
-        t.leff_phi_reim.swapaxes(0, 2),
-        (antenna_perceived_theta[:] * 180 / np.pi,
-         antenna_perceived_phi[:] * 180 / np.pi),
-        method='linear',
-        bounds_error=False,
-        fill_value=0
-    )
-
-    antenna_response_theta_stretch = interp.interp1d(
-        t.frequency, antenna_response_theta, axis=1, kind='linear', bounds_error=False, fill_value=0
-    )(input_freqs)
-
-    antenna_response_phi_stretch = interp.interp1d(
-        t.frequency, antenna_response_phi, axis=1, kind='linear', bounds_error=False, fill_value=0
-    )(input_freqs)
-
-    e_theta_i = np.vstack((
-        np.cos(antenna_perceived_theta) * np.cos(antenna_perceived_phi),
-        np.cos(antenna_perceived_theta) * np.sin(antenna_perceived_phi),
-        -np.sin(antenna_perceived_theta)
-    )).T
-    e_phi_i = np.vstack((
-        -np.sin(antenna_perceived_phi),
-        np.cos(antenna_perceived_phi),
-        np.zeros(len(dist))
-    )).T
-
-    event_E_theta = (e_theta_i[:, :, None] * event_E_trace).sum(axis=1)
-    event_E_phi = (e_phi_i[:, :, None] * event_E_trace).sum(axis=1)
-
-    event_E_theta_fft = sp.fft.rfft(event_E_theta, axis=1)
-    event_E_phi_fft = sp.fft.rfft(event_E_phi, axis=1)
-
-
-    event_VOC_theta_fft = event_E_theta_fft.copy()
-    event_VOC_theta_fft[:, :] *= antenna_response_theta_stretch
-
-    event_VOC_phi_fft = event_E_phi_fft.copy()
-    event_VOC_phi_fft[:, :] *= antenna_response_phi_stretch
-
-    tot_fft = event_VOC_theta_fft + event_VOC_phi_fft
-    return sp.fft.irfft(tot_fft, axis=1), tot_fft
-
-
-def make_voc(event_E_trace, t, event_pos, event_xmax, duration=4.096e-6, input_sampling_freq=2e9, bp_filter=False):
-    """
-    Apply the effective length (L_eff) transformation to an event's electric field time traces. and apply filtering
-    This function:
-    1. Decomposes the input E-field into θ and φ components based on the perceived direction 
-         from the antenna to the event.
-    2. Applies a bandpass filter to remove frequencies outside the 50–250 MHz range.
-    3. Restricts the signal further to the 20–300 MHz range when applying the antenna response.
-    4. Retrieves the antenna response data (L_eff) for the θ and φ components, interpolates 
-         it at the frequency points of interest, and applies it in the frequency domain.
-    5. Returns the inverse Fourier transform of the combined θ and φ voltage signals.
-    Parameters
-    ----------
-    event_E_trace : ndarray
-         The electric field time traces of shape (N_antennas, 3, N_samples), where each trace 
-         is a 3D vector over time.
-    t : ndarray
-         Dataclass containing the effictive lenghts of the antenna.
-    zenith : float
-         The zenith angle in radians of the incoming signal.
-    azimuth : float
-         The azimuth angle in radians of the incoming signal.
-    event_pos : ndarray
-         The position array of the antennas in meter with shape n*3.
-    event_xmax : ndarray
-         The 3D position array (x, y, z) of the maximum emission in meters.
-    Returns
-    -------
-    ndarray
-         The time-domain voltage signals (N_antennas, N_samples), representing the sum of θ and 
-         φ components after applying the bandpass filter and the antenna response.
-    """
-    sampling_period = 1 / input_sampling_freq
-    N_sample = int(np.round(duration * input_sampling_freq))
-    input_freqs = sp.fft.rfftfreq(N_sample, d=sampling_period)
-
-    if (input_sampling_freq/2 > 250*1e6) & bp_filter:
-        event_E_trace_filtered = _butter_bandpass_filter(
-            event_E_trace, 50*1e6, 250*1e6, input_sampling_freq)
-    else:
-        event_E_trace_filtered = event_E_trace
-
-    voc, voc_FFT = apply_leff(event_E_trace_filtered, t, event_pos,
-                              event_xmax, N_sample=N_sample, duration=duration)
-
-    return voc, voc_FFT
-
-
 def interpol_at_new_x(a_x, a_y, new_x):
     """
     Interpolation of discreet function F defined by set of point F(a_x)=a_y for new_x value
@@ -730,7 +580,7 @@ def abcd_2_tf(abcd_matrix, Z_ant, Z_in):
     return V_I_out_RFchain[:, 0]
 
 
-def smap_2_tf(list_s_maps, zload_map, zant_map, target_freqs, is_db=None, balun_2_map=None, axis=0):
+def smap_2_tf(list_s_maps, zload_map, zant_map, input_freq, is_db=None, balun_2_map=None, axis=0):
     """
     Computes the transfer function (TF) from a series of S-parameter maps, load impedance, 
     and antenna impedance over a range of target frequencies.
@@ -739,7 +589,7 @@ def smap_2_tf(list_s_maps, zload_map, zant_map, target_freqs, is_db=None, balun_
         list_s_maps (list): A list of file paths or data structures containing S-parameter maps.
         zload_map (str or object): File path or data structure representing the load impedance map.
         zant_map (str or object): File path or data structure representing the antenna impedance map.
-        target_freqs (array-like): A list or array of target frequencies for which the transfer 
+        input_freq (array-like): A list or array of target frequencies for which the transfer 
                                    function is computed.
         is_db (list, optional): A list of booleans indicating whether each S-parameter map in 
                                 `list_s_maps` is in decibels (True) or linear scale (False). 
@@ -757,17 +607,49 @@ def smap_2_tf(list_s_maps, zload_map, zant_map, target_freqs, is_db=None, balun_
     list_abcd = []
     for s_map, db in zip(list_s_maps, is_db):
         ABCD_matrix, (s11, s21, s12, s22) = s_file_2_abcd(
-            s_map, target_freqs, db=db)
+            s_map, input_freq, db=db)
         list_abcd.append(ABCD_matrix)
-    ABCD_matrix_balun2, _ = s_file_2_abcd(balun_2_map, target_freqs, db=False)
+    ABCD_matrix_balun2, _ = s_file_2_abcd(balun_2_map, input_freq, db=False)
 
-    Z_load = open_Zload(zload_map, target_freqs)
-    Z_ant = open_Zant(zant_map, target_freqs, axis=axis)
+    Z_load = open_Zload(zload_map, input_freq)
+    Z_ant = open_Zant(zant_map, input_freq, axis=axis)
     ABCD_tot, Z_in = total_abcd_matrix(
         list_abcd, Z_load, balun2_abcd=ABCD_matrix_balun2)
     tf = abcd_2_tf(ABCD_tot, Z_ant, Z_in)
     return tf
 
+def save_tf(tf, input_freqs, out_filename):
+    """
+    Saves the transfer function to a file.
+
+    Parameters:
+        tf (numpy.ndarray): The transfer function to be saved.
+        out_filename (str): The name of the output file where the transfer function will be saved.
+    """
+    np.savez(out_filename, tf=tf, freqs=input_freqs)
+
+def make_full_response_matrix(t_SN, t_EW, t_Z, theta_du, phi_du, tf, duration=4.096e-6, input_sampling_freq=2e9):
+    """
+    Constructs the full system response by combining the effective lengths and transfer function.
+    Parameters:
+        t_SN (DataTable): Effective length data for the South-North direction.
+        t_EW (DataTable): Effective length data for the East-West direction.
+        t_Z (DataTable): Effective length data for the Zenith direction.
+        theta_du (array-like): Zenith angles in radians for the antennas.
+        phi_du (array-like): Azimuth angles in radians for the antennas.
+        tf (array-like): Transfer function data for the system.
+        duration (float, optional): Duration of the signal in seconds. Default is 4.096e-6.
+        input_sampling_freq (float, optional): Sampling frequency of the input data in Hz. Default is 2e9 (2 GHz).
+    Returns:
+        numpy.ndarray: A 4D array representing the full system response with shape
+        (n_events, n_polar_efield, n_channels, n_frequencies).
+    """
+    l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
+    l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
+    l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=input_sampling_freq, duration=duration)
+    l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
+    full_response = l_eff * tf[None,None,...]
+    return full_response
 
 def efield_2_voltage(
     event_trace_fft, full_response, target_rate=2e9, current_rate=2e9
@@ -903,3 +785,153 @@ def plot_quantities(lst_rad, freq_idx, all_zenith, all_azimuth, leff_interpolate
     axs.T[1, 2].set_xlabel('west <- RA -> east')
     axs.T[1, 2].set_title('$B_\\nu$ [W.m$^{-2}$.Hz$^{-1}$.sr$^{-1}$]')
     plt.tight_layout()
+
+
+# def apply_leff(event_E_trace, t, event_pos, event_xmax, duration=4.096e-6, input_sampling_freq=2e9):
+#     """
+#     Apply the effective length (L_eff) transformation to an event's electric field time traces.
+
+#     This function:
+#     1. Decomposes the input E-field into θ and φ components based on the perceived direction
+#        from the antenna to the event.
+#     2. Applies a bandpass filter to remove frequencies outside the 50–250 MHz range.
+#     3. Restricts the signal further to the 20–300 MHz range when applying the antenna response.
+#     4. Retrieves the antenna response data (L_eff) for the θ and φ components, interpolates
+#        it at the frequency points of interest, and applies it in the frequency domain.
+#     5. Returns the inverse Fourier transform of the combined θ and φ voltage signals.
+
+#     Parameters
+#     ----------
+#     event_E_trace : ndarray
+#         The electric field time traces of shape (N_antennas, 3, N_samples), where each trace
+#         is a 3D vector over time.
+#     t : ndarray
+#         Dataclass containing the effective lengths of the antenna.
+#     event_pos : ndarray
+#         The position array of the antennas in meters with shape (n, 3).
+#     event_xmax : ndarray
+#         The 3D position array (x, y, z) of the maximum emission in meters.
+#     N_sample : int, optional
+#         Number of samples for the FFT. Default is 8192.
+#     duration : float, optional
+#         Duration of the signal in seconds. Default is 4.096e-6.
+
+#     Returns
+#     -------
+#     ndarray
+#         The time-domain voltage signals (N_antennas, N_samples), representing the sum of θ and
+#         φ components after applying the bandpass filter and the antenna response.
+#     """
+#     sampling_period = 1 / input_sampling_freq
+#     N_sample = int(np.round(duration * input_sampling_freq))
+#     input_freqs = sp.fft.rfftfreq(N_sample, d=sampling_period)  # Frequency axis
+
+#     antenna_perceived_direction = event_pos - event_xmax
+#     dist, antenna_perceived_theta, antenna_perceived_phi = cart2sph(
+#         -antenna_perceived_direction)
+
+
+#     print(
+#         f'Antenna response between {t.frequency.min() / 1e6:.0f} MHz and {t.frequency.max() / 1e6:.0f} MHz')
+
+#     antenna_response_theta = interp.interpn(
+#         (t.theta, t.phi),
+#         t.leff_theta_reim.swapaxes(0, 2),
+#         (antenna_perceived_theta[:] * 180 / np.pi,
+#          antenna_perceived_phi[:] * 180 / np.pi),
+#         method='linear',
+#         bounds_error=False,
+#         fill_value=0
+#     )
+#     antenna_response_phi = interp.interpn(
+#         (t.theta, t.phi),
+#         t.leff_phi_reim.swapaxes(0, 2),
+#         (antenna_perceived_theta[:] * 180 / np.pi,
+#          antenna_perceived_phi[:] * 180 / np.pi),
+#         method='linear',
+#         bounds_error=False,
+#         fill_value=0
+#     )
+
+#     antenna_response_theta_stretch = interp.interp1d(
+#         t.frequency, antenna_response_theta, axis=1, kind='linear', bounds_error=False, fill_value=0
+#     )(input_freqs)
+
+#     antenna_response_phi_stretch = interp.interp1d(
+#         t.frequency, antenna_response_phi, axis=1, kind='linear', bounds_error=False, fill_value=0
+#     )(input_freqs)
+
+#     e_theta_i = np.vstack((
+#         np.cos(antenna_perceived_theta) * np.cos(antenna_perceived_phi),
+#         np.cos(antenna_perceived_theta) * np.sin(antenna_perceived_phi),
+#         -np.sin(antenna_perceived_theta)
+#     )).T
+#     e_phi_i = np.vstack((
+#         -np.sin(antenna_perceived_phi),
+#         np.cos(antenna_perceived_phi),
+#         np.zeros(len(dist))
+#     )).T
+
+#     event_E_theta = (e_theta_i[:, :, None] * event_E_trace).sum(axis=1)
+#     event_E_phi = (e_phi_i[:, :, None] * event_E_trace).sum(axis=1)
+
+#     event_E_theta_fft = sp.fft.rfft(event_E_theta, axis=1)
+#     event_E_phi_fft = sp.fft.rfft(event_E_phi, axis=1)
+
+
+#     event_VOC_theta_fft = event_E_theta_fft.copy()
+#     event_VOC_theta_fft[:, :] *= antenna_response_theta_stretch
+
+#     event_VOC_phi_fft = event_E_phi_fft.copy()
+#     event_VOC_phi_fft[:, :] *= antenna_response_phi_stretch
+
+#     tot_fft = event_VOC_theta_fft + event_VOC_phi_fft
+#     return sp.fft.irfft(tot_fft, axis=1), tot_fft
+
+
+# def make_voc(event_E_trace, t, event_pos, event_xmax, duration=4.096e-6, input_sampling_freq=2e9, bp_filter=False):
+#     """
+#     Apply the effective length (L_eff) transformation to an event's electric field time traces. and apply filtering
+#     This function:
+#     1. Decomposes the input E-field into θ and φ components based on the perceived direction 
+#          from the antenna to the event.
+#     2. Applies a bandpass filter to remove frequencies outside the 50–250 MHz range.
+#     3. Restricts the signal further to the 20–300 MHz range when applying the antenna response.
+#     4. Retrieves the antenna response data (L_eff) for the θ and φ components, interpolates 
+#          it at the frequency points of interest, and applies it in the frequency domain.
+#     5. Returns the inverse Fourier transform of the combined θ and φ voltage signals.
+#     Parameters
+#     ----------
+#     event_E_trace : ndarray
+#          The electric field time traces of shape (N_antennas, 3, N_samples), where each trace 
+#          is a 3D vector over time.
+#     t : ndarray
+#          Dataclass containing the effictive lenghts of the antenna.
+#     zenith : float
+#          The zenith angle in radians of the incoming signal.
+#     azimuth : float
+#          The azimuth angle in radians of the incoming signal.
+#     event_pos : ndarray
+#          The position array of the antennas in meter with shape n*3.
+#     event_xmax : ndarray
+#          The 3D position array (x, y, z) of the maximum emission in meters.
+#     Returns
+#     -------
+#     ndarray
+#          The time-domain voltage signals (N_antennas, N_samples), representing the sum of θ and 
+#          φ components after applying the bandpass filter and the antenna response.
+#     """
+#     sampling_period = 1 / input_sampling_freq
+#     N_sample = int(np.round(duration * input_sampling_freq))
+#     input_freqs = sp.fft.rfftfreq(N_sample, d=sampling_period)
+
+#     if (input_sampling_freq/2 > 250*1e6) & bp_filter:
+#         event_E_trace_filtered = _butter_bandpass_filter(
+#             event_E_trace, 50*1e6, 250*1e6, input_sampling_freq)
+#     else:
+#         event_E_trace_filtered = event_E_trace
+
+#     voc, voc_FFT = apply_leff(event_E_trace_filtered, t, event_pos,
+#                               event_xmax, N_sample=N_sample, duration=duration)
+
+#     return voc, voc_FFT

@@ -31,8 +31,8 @@ def load_input_params_from_dict(params_RF):
     All_lst_hours = np.arange(0, 24, 0.1)
     LST_radians = All_lst_hours * 15 * np.pi / 180
 
-    if "transfer_function" in params_RF and params_RF["transfer_function"] is not None:
-        tf_dict = np.load(os.path.join(s_parameters_path, params_RF["transfer_function"]))
+    if "transfer_function_filename" in params_RF and params_RF["transfer_function_filename"] is not None:
+        tf_dict = np.load(os.path.join(s_parameters_path, params_RF["transfer_function_filename"]))
         tf = tf_dict['tf'].astype(np.float64)
         base_freqs = tf_dict['freqs'].astype(np.float64)
         tf = interp.interp1d(base_freqs, tf, kind='linear', axis=0, bounds_error=False, fill_value=0.0)(in_freqs)

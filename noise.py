@@ -113,10 +113,10 @@ class compute_noise():
                                                axis=0, kind='linear', bounds_error=False, fill_value=0)(self.LF_freqs)
 
         n_freqs = tf_rfchain.shape[-1]
-        self.tf_target = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
-        )(target_freqs)
         self.tf_LF = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
         )(LF_freqs)
+        self.tf_target = interp.interp1d(np.linspace(0, (n_freqs-1)/duration, n_freqs), tf_rfchain, axis=1, kind='quadratic', bounds_error=False, fill_value=0
+        )(target_freqs)
         self.target_freqs = target_freqs
         
     @property

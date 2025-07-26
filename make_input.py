@@ -31,13 +31,14 @@ def load_input_params_from_dict(params_RF):
     All_lst_hours = np.arange(0, 24, 0.1)
     LST_radians = All_lst_hours * 15 * np.pi / 180
 
+    s_parameters_path = params_RF['s_parameters_path']
     if "transfer_function_filename" in params_RF and params_RF["transfer_function_filename"] is not None:
         tf_dict = np.load(os.path.join(s_parameters_path, params_RF["transfer_function_filename"]))
         tf = tf_dict['tf'].astype(np.float64)
         base_freqs = tf_dict['freqs'].astype(np.float64)
-        tf = interp.interp1d(base_freqs, tf, kind='linear', axis=0, bounds_error=False, fill_value=0.0)(in_freqs)
+        tf = interp.interp1d(base_freqs, tf, kind='linear', axis=1, bounds_error=False, fill_value=0.0)(in_freqs)
+        print("Loaded pre-existing transfer function from file.")
     else: 
-        s_parameters_path = params_RF['s_parameters_path']
 
         balun1      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun1_filename"]), comments=['#', '!']).astype(np.float64)
         matchnet_sn = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_sn_filename"]), comments=['#', '!']).astype(np.float64)

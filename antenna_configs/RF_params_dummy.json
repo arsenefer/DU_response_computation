@@ -5,7 +5,7 @@
     "input_sampling_freq": 2e9,
     "out_sampling_freq": 2e9,
     "s_parameters_path": "./files/electronics2",
-    "transfer_function_filename":null,
+    "transfer_function_filename":"dummy_rfchain.npz",
     "balun1_filename": "balun_in_nut.s2p",
     "matchnet_sn_filename": "MatchingNetworkX.s2p",
     "matchnet_ew_filename": "MatchingNetworkY.s2p",

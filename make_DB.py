@@ -38,7 +38,7 @@ from noise import compute_noise
 
 from make_input import load_input_params_from_dict
 
-params_file = 'antenna_configs/RF_params_new_leffs.json'
+params_file = 'antenna_configs/RF_params_dummy.json'
 with open(params_file, 'r') as f:
     params_RF = json.load(f)
 
@@ -55,7 +55,7 @@ noise_computer = compute_noise(10., latitude,
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_fourrier_spectrum
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_bin/"
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy/"
 big_list= []
 for root_dir in all_root_dirs:
     output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]

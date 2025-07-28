@@ -286,44 +286,76 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             The electric field time traces and associated data.
     """
     antenna_pos_file = glob(f'{directory_to_roots}/run_*_L0_*.root')[0]
-    shower_meta_data_file = glob(f'{directory_to_roots}/shower_*_L0_*.root')[0]
-    efield_file = glob(f'{directory_to_roots}/efield_*_L{L1_or_L0}_*.root')[0]
-
     with uproot.open(antenna_pos_file) as f:
         antenna_pos = f['trun']['du_xyz'].array().to_numpy()[0]
-    with uproot.open(shower_meta_data_file) as f:
-        shower_meta_data = f['tshower']
-        shower_core_pos = shower_meta_data['shower_core_pos'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
-        zenith = shower_meta_data['zenith'].array(
-            entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
-        azimuth = shower_meta_data['azimuth'].array(
-            entry_start=start, entry_stop=stop).to_numpy() * np.pi / 180
-        energy_primary = shower_meta_data['energy_primary'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
-        xmax_grams = shower_meta_data['xmax_grams'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
-        xmax_pos = shower_meta_data['xmax_pos_shc'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
-        ptypes = shower_meta_data['primary_type'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
-        event_numbers = shower_meta_data['event_number'].array(
-            entry_start=start, entry_stop=stop).to_numpy()
+    shower_meta_data_files = sorted(glob(f'{directory_to_roots}/shower_*_L0_*.root'))
+    efield_files = sorted(glob(f'{directory_to_roots}/efield_*_L{L1_or_L0}_*.root'))
+    n_events = []
+    for met in shower_meta_data_files:
+        with uproot.open(met) as f:
+            n_events.append(f['tshower'].num_entries)
+    n_events = np.array(n_events)
+    if stop is None:
+        stop = np.sum(n_events)
+    cum_n_events = np.cumsum(n_events)
+    cum_n_event_starting_index = cum_n_events - n_events
+    overlap = np.where((cum_n_events >= start) & (cum_n_event_starting_index < stop))[0]
 
-    with uproot.open(efield_file) as f:
-        efield_trace = f['tefield']['trace'].array(
-            entry_start=start, entry_stop=stop)
-        efield_du_ns = f['tefield']['du_nanoseconds'].array(
-            entry_start=start, entry_stop=stop)
-        efield_du_s = f['tefield']['du_seconds'].array(
-            entry_start=start, entry_stop=stop)
-        efield_du_id = f['tefield']['du_id'].array(
-            entry_start=start, entry_stop=stop)
-        efield_event_number = f['tefield']['event_number'].array(
-            entry_start=start, entry_stop=stop)
+    shower_core_pos = np.empty((0, 3))
+    zenith = np.empty((0))
+    azimuth = np.empty((0))
+    energy_primary = np.empty((0))
+    xmax_grams = np.empty((0))
+    xmax_pos = np.empty((0, 3))
+    ptypes = np.empty((0))
+    event_numbers = np.empty((0))
 
-    
-    xmax_pos = xmax_pos + shower_core_pos - np.array([[0, 0, 1264]])
+    efield_trace = []
+    efield_du_ns = []
+    efield_du_s = []
+    efield_du_id = []
+    file_names = []
+    efield_event_number = np.empty((0))
+    for index_overlap in overlap:
+        shower_meta_data_file = shower_meta_data_files[index_overlap]
+        efield_file = efield_files[index_overlap]
+
+        start_index = max(start, cum_n_event_starting_index[index_overlap]) - cum_n_event_starting_index[index_overlap]
+        stop_index = min(stop, cum_n_events[index_overlap]) - cum_n_event_starting_index[index_overlap]
+        with uproot.open(shower_meta_data_file) as f:
+            shower_meta_data = f['tshower']
+            shower_core_pos = np.concatenate((shower_core_pos, shower_meta_data['shower_core_pos'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            zenith = np.concatenate((zenith, shower_meta_data['zenith'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy() * np.pi / 180))
+            azimuth = np.concatenate((azimuth, shower_meta_data['azimuth'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy() * np.pi / 180))
+            energy_primary = np.concatenate((energy_primary, shower_meta_data['energy_primary'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            xmax_grams = np.concatenate((xmax_grams, shower_meta_data['xmax_grams'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            xmax_pos = np.concatenate((xmax_pos, shower_meta_data['xmax_pos_shc'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            ptypes = np.concatenate((ptypes, shower_meta_data['primary_type'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            event_numbers = np.concatenate((event_numbers, shower_meta_data['event_number'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+
+        with uproot.open(efield_file) as f:
+            efield_trace += [traces.to_numpy() for traces in f['tefield']['trace'].array(
+                entry_start=start_index, entry_stop=stop_index)]
+            efield_du_ns += [du_ns.to_numpy() for du_ns in f['tefield']['du_nanoseconds'].array(
+                entry_start=start_index, entry_stop=stop_index)]
+            efield_du_s += [du_s.to_numpy() for du_s in f['tefield']['du_seconds'].array(
+                entry_start=start_index, entry_stop=stop_index)]
+            efield_du_id += [du_id.to_numpy() for du_id in f['tefield']['du_id'].array(
+                entry_start=start_index, entry_stop=stop_index)]
+            efield_event_number = np.concatenate((efield_event_number, f['tefield']['event_number'].array(
+                entry_start=start_index, entry_stop=stop_index).to_numpy()))
+        file_names += [efield_file] * (stop_index - start_index)
+    assert (efield_event_number == event_numbers).all(), "Event numbers in efield and shower meta data do not match."
+    shower_core_pos[:,-1] += 1264  # add the height of the detector
+    xmax_pos = xmax_pos + shower_core_pos# + np.array([[0, 0, 1264]])
 
     # xmax_pos = xmax_pos + shower_core_pos
     kx,ky,kz = sph2cart(zenith, azimuth)
@@ -333,6 +365,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     assert np.allclose(np.sum(k*k_rec, axis=1), 1), f"The direction of the shower core and xmax position do not match. dot : {np.sum(k*k_rec, axis=1)}"
     print("Xmax and showercore correctly corrected")
     meta_data = {
+        "files": file_names,
         "event_numbers": event_numbers,
         'core_pos': shower_core_pos,
         'zenith': zenith,

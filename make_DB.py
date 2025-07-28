@@ -38,7 +38,7 @@ from noise import compute_noise
 
 from make_input import load_input_params_from_dict
 
-params_file = 'antenna_configs/RF_params_dummy.json'
+params_file = 'antenna_configs/RF_params_dummy_2048.json'
 with open(params_file, 'r') as f:
     params_RF = json.load(f)
 
@@ -46,7 +46,7 @@ duration, latitude, altitude, input_sampling_freq, out_sampling_freq, \
 N_samples, sampling_period, freqs, \
 out_N_samples, out_sampling_period, out_freqs, \
 LST_radians, tf, t_SN, t_EW, t_Z = load_input_params_from_dict(params_RF)
-all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2Training/sim_Xiaodushan_*", ))
+all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
 
 noise_computer = compute_noise(10., latitude, 
                               [f"files/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
@@ -55,14 +55,14 @@ noise_computer = compute_noise(10., latitude,
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_fourrier_spectrum
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy/"
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo/"
 big_list= []
 for root_dir in all_root_dirs:
-    output_dir = output_dir_base + root_dir.rstrip('/').split('/')[-1]
+    root_dir_name = root_dir.rstrip('/').split('/')[-1]
+    output_dir = output_dir_base + root_dir_name
     os.makedirs(output_dir, exist_ok=True)
-    print(output_dir)
     file_Vout = []
-    step = 20
+    step = 200
     existing_files = set(glob(f"{output_dir}/*.hdf5"))
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step
@@ -76,7 +76,7 @@ for root_dir in all_root_dirs:
         print(f"Processing events {start} to {stop} in {root_dir}")
         all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
         for ev_idx in range(len(efield_data['traces'])):
-            event_traces = efield_data['traces'][ev_idx].to_numpy().astype(np.float64)
+            event_traces = efield_data['traces'][ev_idx].astype(np.float64)
 
             event_trace_fft = sp.fft.rfft(event_traces)
             antenna_pos = all_antenna_pos[efield_data['du_id'][ev_idx]]
@@ -96,32 +96,30 @@ for root_dir in all_root_dirs:
                                             current_rate=2e9, target_rate=2e9)
 
             # vout = voltage_to_adc(vout)
-            with h5py.File(f"{output_dir}/{start+ev_idx}.hdf5", "w") as f:
+            efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1]
+            os.makedirs(f"{output_dir}/{efield_file_name}", exist_ok=True)
+            with h5py.File(f"{output_dir}/{efield_file_name}/{start+ev_idx}.hdf5", "w") as f:
                 dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
                 dset[:] = vout
 
                 vout_down = vout[...,::4]  #Downsampling to 500MHz
-                print(f"vout shape: {vout.shape}")
-                print(f"vout_down shape: {vout_down.shape}")
+                # print(f"vout shape: {vout.shape}")
+                # print(f"vout_down shape: {vout_down.shape}")
                 dset = f.create_dataset("v_out_L1", vout_down.shape, dtype=np.float16)
                 dset[:] = vout_down
 
-                vout_down_alpha = vout[...,500:4096+500]  #Downsampling to keeping 1024 samples
-                vout_down_alpha = vout_down_alpha[...,::4]  #Downsampling to 500MHz
-                dset = f.create_dataset("v_out_L1_alpha", vout_down_alpha.shape, dtype=np.float16)
-                dset[:] = vout_down_alpha
 
-                du_s = efield_data['du_s'][ev_idx].to_numpy()
+                du_s = efield_data['du_s'][ev_idx]
                 dset = f.create_dataset("du_s", len(du_s), dtype=du_s.dtype)
-                dset[:] = efield_data['du_s'][ev_idx].to_numpy()
+                dset[:] = efield_data['du_s'][ev_idx]
 
-                du_ns = efield_data['du_ns'][ev_idx].to_numpy()
+                du_ns = efield_data['du_ns'][ev_idx]
                 dset = f.create_dataset("du_ns", len(du_ns), dtype=du_ns.dtype)
-                dset[:] = efield_data['du_ns'][ev_idx].to_numpy()
+                dset[:] = efield_data['du_ns'][ev_idx]
 
-                du_id = efield_data['du_id'][ev_idx].to_numpy()
+                du_id = efield_data['du_id'][ev_idx]
                 dset = f.create_dataset("du_id", len(du_id), dtype=du_id.dtype)
-                dset[:] = efield_data['du_id'][ev_idx].to_numpy()
+                dset[:] = efield_data['du_id'][ev_idx]
 
                 dset = f.create_dataset("du_pos", antenna_pos.shape, dtype=antenna_pos.dtype)
                 dset[:] = antenna_pos

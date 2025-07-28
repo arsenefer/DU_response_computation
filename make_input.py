@@ -6,10 +6,6 @@ import json
 
 module_set=set(dir())
 
-files_location = "/volatile/home/af274537/Documents/WorkingDir/new_rfchain"
-electronics_path = f"{files_location}/electronics"
-l_eff_path = f"{files_location}/l_eff_maps_2"
-
 def load_input_params_from_dict(params_RF):
     latitude = (90-(params_RF['latitude'])) * np.pi / 180
     altitude = params_RF['altitude']

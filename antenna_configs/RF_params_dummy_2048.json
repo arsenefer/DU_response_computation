@@ -20,5 +20,8 @@
     "zant_map_filename": "Z_ant_3.2m.csv",
     "path_to_GP300_EW": "./files/l_eff_maps_2/Light_GP300Antenna_EWarm_leff.npz",
     "path_to_GP300_SN": "./files/l_eff_maps_2/Light_GP300Antenna_SNarm_leff.npz",
-    "path_to_GP300_Z": "./files/l_eff_maps_2/Light_GP300Antenna_Zarm_leff.npz"
+    "path_to_GP300_Z": "./files/l_eff_maps_2/Light_GP300Antenna_Zarm_leff.npz",
+    "path_to_horizon_EW": "./files/l_eff_maps_hor/HorizonAntenna_EWarm_leff_loaded.npy",
+    "path_to_horizon_SN": "./files/l_eff_maps_hor/HorizonAntenna_SNarm_leff_loaded.npy",
+    "path_to_horizon_Z": "./files/l_eff_maps_hor/HorizonAntenna_Zarm_leff_loaded.npy"
     }

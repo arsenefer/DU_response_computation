@@ -18,61 +18,6 @@ c = 299792458
 Z0 = 4 * np.pi * c * 1e-7
 
 
-
-def load_parameters_and_compute_stuff(params_RF):
-    latitude = (90-(params_RF['latitude'])) * np.pi / 180
-
-    #Input traces info
-    duration = params_RF['duration']
-    sampling_freq = params_RF['sampling_freq']
-    out_sampling_freq = params_RF['out_sampling_freq']
-
-    N_samples = int(np.round(duration * sampling_freq))
-    sampling_period = 1/sampling_freq
-    freqs = sp.fft.rfftfreq(N_samples, sampling_period)
-
-    #Output traces info
-    out_N_samples = int(np.round(duration * out_sampling_freq))
-    out_sampling_period = 1/out_sampling_freq
-    out_freqs = sp.fft.rfftfreq(out_N_samples, out_sampling_period)
-
-    #Input noise
-    All_lst_hours = np.arange(0, 24, 0.1)
-    LST_radians = All_lst_hours * 15 * np.pi / 180
-
-    s_parameters_path = params_RF['s_parameters_path']
-
-    balun1      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun1_filename"]), comments=['#', '!']).astype(np.float64)
-    matchnet_sn = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_sn_filename"]), comments=['#', '!']).astype(np.float64)
-    matchnet_ew = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_ew_filename"]), comments=['#', '!']).astype(np.float64)
-    matchnet_z  = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_z_filename"]), comments=['#', '!']).astype(np.float64)
-    LNA_sn      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_sn_filename"]), comments=['#', '!']).astype(np.float64)
-    LNA_ew      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_ew_filename"]), comments=['#', '!']).astype(np.float64)
-    LNA_z       = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_z_filename"]), comments=['#', '!']).astype(np.float64)
-    cable       = np.loadtxt(os.path.join(s_parameters_path, params_RF["cable_filename"]), comments=['#', '!']).astype(np.float64)
-    vga         = np.loadtxt(os.path.join(s_parameters_path, params_RF["vga_filename"]), comments=['#', '!']).astype(np.float64)
-    balun2      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun2_filename"]), comments=['#', '!']).astype(np.float64)
-    zload_map   = np.loadtxt(os.path.join(s_parameters_path, params_RF["zload_map_filename"]), comments=['#', '!']).astype(np.float64)
-    zant_map    = np.loadtxt(os.path.join(s_parameters_path, params_RF["zant_map_filename"]), delimiter=",", comments=['#', '!'], skiprows=1).astype(np.float64)
-
-    list_s_maps_sn = [balun1, matchnet_sn, LNA_sn, cable, vga]
-    list_s_maps_ew = [balun1, matchnet_ew, LNA_ew, cable, vga]
-    list_s_maps_z = [balun1, matchnet_z, LNA_z, cable, vga]
-    is_db = [False, False, True, True, True]
-
-    tf_sn = smap_2_tf(list_s_maps_sn, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=0)
-    tf_ew = smap_2_tf(list_s_maps_ew, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=1)
-    tf_z = smap_2_tf(list_s_maps_z, zload_map, zant_map, out_freqs, is_db=is_db, balun_2_map=balun2, axis=2)
-    tf = np.stack([tf_sn, tf_ew, tf_z])
-
-    t_SN = open_gp300(params_RF["path_to_GP300_SN"])
-    t_EW = open_gp300(params_RF["path_to_GP300_EW"])
-    t_Z = open_gp300(params_RF["path_to_GP300_Z"])
-
-    l_eff = [t_SN, t_EW, t_Z]
-
-    return l_eff, tf, latitude, out_freqs
-
 def cart2sph(k):
     """
     Convert cartesian coordinate to spherical coordinate
@@ -91,33 +36,6 @@ def sph2cart(theta, phi):
     y = np.sin(phi) * np.sin(theta)
     z = np.cos(theta)
     return x, y, z
-
-@dataclass
-class DataTable:
-    """
-    DataTable is a class that represents a data structure for storing and managing
-    various parameters related to frequency, angles, and effective lengths.
-
-    Attributes:
-        frequency (Union[Number, np.ndarray]): The frequency values, which can be a single number or an array.
-        theta (Union[Number, np.ndarray]): The theta angle values, which can be a single number or an array.
-        phi (Union[Number, np.ndarray]): The phi angle values, which can be a single number or an array.
-        leff_theta (Union[Number, np.ndarray], optional): The effective length for the theta component. Defaults to None.
-        phase_theta (Union[Number, np.ndarray], optional): The phase for the theta component. Defaults to None.
-        leff_phi (Union[Number, np.ndarray], optional): The effective length for the phi component. Defaults to None.
-        phase_phi (Union[Number, np.ndarray], optional): The phase for the phi component. Defaults to None.
-        leff_phi_reim (Union[Number, np.ndarray], optional): The real and imaginary parts of the effective length for the phi component. Defaults to None.
-        leff_theta_reim (Union[Number, np.ndarray], optional): The real and imaginary parts of the effective length for the theta component. Defaults to None.
-    """
-    frequency: Union[Number, np.ndarray]
-    theta: Union[Number, np.ndarray]
-    phi: Union[Number, np.ndarray]
-    leff_theta: Union[Number, np.ndarray] = None
-    phase_theta: Union[Number, np.ndarray] = None
-    leff_phi: Union[Number, np.ndarray] = None
-    phase_phi: Union[Number, np.ndarray] = None
-    leff_phi_reim: Union[Number, np.ndarray] = None
-    leff_theta_reim: Union[Number, np.ndarray] = None
 
 
 def _butter_bandpass_filter(data, lowcut, highcut, fs):
@@ -295,6 +213,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
         with uproot.open(met) as f:
             n_events.append(f['tshower'].num_entries)
     n_events = np.array(n_events)
+    print(n_events)
     if stop is None:
         stop = np.sum(n_events)
     cum_n_events = np.cumsum(n_events)
@@ -309,6 +228,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     xmax_pos = np.empty((0, 3))
     ptypes = np.empty((0))
     event_numbers = np.empty((0))
+    event_index = []
 
     efield_trace = []
     efield_du_ns = []
@@ -340,6 +260,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
                 entry_start=start_index, entry_stop=stop_index).to_numpy()))
             event_numbers = np.concatenate((event_numbers, shower_meta_data['event_number'].array(
                 entry_start=start_index, entry_stop=stop_index).to_numpy()))
+            event_index += list(range(start_index, stop_index))
 
         with uproot.open(efield_file) as f:
             efield_trace += [traces.to_numpy() for traces in f['tefield']['trace'].array(
@@ -367,6 +288,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     meta_data = {
         "files": file_names,
         "event_numbers": event_numbers,
+        "event_index":event_index,
         'core_pos': shower_core_pos,
         'zenith': zenith,
         'azimuth': azimuth,

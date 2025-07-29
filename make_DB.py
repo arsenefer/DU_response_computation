@@ -32,6 +32,7 @@ from glob import glob
 import os
 import h5py
 import json
+import pandas as pd
 
 from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, make_full_response_matrix
 from noise import compute_noise
@@ -55,8 +56,8 @@ noise_computer = compute_noise(10., latitude,
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
 noise_computer.noise_fourrier_spectrum
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo/"
-big_list= []
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
+big_df = pd.DataFrame({})
 for root_dir in all_root_dirs:
     root_dir_name = root_dir.rstrip('/').split('/')[-1]
     output_dir = output_dir_base + root_dir_name
@@ -82,7 +83,7 @@ for root_dir in all_root_dirs:
             antenna_pos = all_antenna_pos[efield_data['du_id'][ev_idx]]
             xmax_pos = meta_data['xmax_pos'][ev_idx]
             shower_core_pos = meta_data['core_pos'][ev_idx]
-
+            index = meta_data['event_index'][ev_idx]
 
             # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
 
@@ -98,7 +99,7 @@ for root_dir in all_root_dirs:
             # vout = voltage_to_adc(vout)
             efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1]
             os.makedirs(f"{output_dir}/{efield_file_name}", exist_ok=True)
-            with h5py.File(f"{output_dir}/{efield_file_name}/{start+ev_idx}.hdf5", "w") as f:
+            with h5py.File(f"{output_dir}/{efield_file_name}/{index}.hdf5", "w") as f:
                 dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
                 dset[:] = vout
 
@@ -133,24 +134,26 @@ for root_dir in all_root_dirs:
                 f.attrs['p_types'] = str(meta_data['p_types'][ev_idx])
                 f.attrs['zenith'] = meta_data['zenith'][ev_idx]
                 f.attrs['azimuth'] = meta_data['azimuth'][ev_idx]
-            big_list.append([root_dir.split('/')[-1], ev_idx, meta_data['event_numbers'][ev_idx], meta_data['core_pos'][ev_idx],
-                                meta_data['xmax_pos'][ev_idx], meta_data['xmax_grams'][ev_idx], 
-                                meta_data['energy_primary'][ev_idx], meta_data['p_types'][ev_idx],
-                                meta_data['zenith'][ev_idx], meta_data['azimuth'][ev_idx]])
-            
-import pandas as pd
-pd.DataFrame({
-    'root_name': [x[0] for x in big_list],
-    'event_idx': [x[1] for x in big_list],
-    'event_number': [x[2] for x in big_list],
-    'core_pos': [x[3] for x in big_list],
-    'xmax_pos': [x[4] for x in big_list],
-    'xmax_grams': [x[5] for x in big_list],
-    'energy_primary': [x[6] for x in big_list],
-    'p_types': [x[7] for x in big_list],
-    'zenith': [x[8] for x in big_list],
-    'azimuth': [x[9] for x in big_list]
-}).to_csv(f"{output_dir_base}/metadata.csv", index=False)
+
+            big_df = pd.concat([big_df, pd.DataFrame({
+                'root_dir_name': [root_dir_name],
+                'root_file_name': [efield_file_name],
+                'event_idx': [index],
+                'event_number': [meta_data['event_numbers'][ev_idx]],
+                'core_pos_x': [meta_data['core_pos'][ev_idx][0]],
+                'core_pos_y': [meta_data['core_pos'][ev_idx][1]],
+                'core_pos_z': [meta_data['core_pos'][ev_idx][2]],
+                'xmax_pos_x': [meta_data['xmax_pos'][ev_idx][0]],
+                'xmax_pos_y': [meta_data['xmax_pos'][ev_idx][1]],
+                'xmax_pos_z': [meta_data['xmax_pos'][ev_idx][2]],
+                'xmax_grams': [meta_data['xmax_grams'][ev_idx]],
+                'energy_primary': [meta_data['energy_primary'][ev_idx]],
+                'p_types': [meta_data['p_types'][ev_idx]],
+                'zenith': [meta_data['zenith'][ev_idx]],
+                'azimuth': [meta_data['azimuth'][ev_idx]]
+            })], ignore_index=True)
+big_df.to_csv(f"{output_dir_base}/metadata.csv", index=False)
+
 
 
 ## Faire CSV avec 

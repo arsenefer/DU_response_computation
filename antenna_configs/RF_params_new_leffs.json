@@ -1,7 +1,7 @@
 {
     "latitude": 40.96,
     "altitude":1264,
-    "duration": 4.096e-6,
+    "duration": 2.048e-6,
     "input_sampling_freq": 2e9,
     "out_sampling_freq": 2e9,
     "s_parameters_path": "./files/electronics2",

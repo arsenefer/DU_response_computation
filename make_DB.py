@@ -39,11 +39,11 @@ from noise import compute_noise
 
 from make_input import load_input_params_from_dict, open_gp300
 import matplotlib.pyplot as plt
-all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
-# all_root_dirs = sorted(glob(f"/sps/grand/DC2.1rc4/GP300ZHAireS-NJ/sim_Xiaodushan_*", ))
+# all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
+all_root_dirs = sorted(glob(f"/sps/grand/DC2.1rc4/GP300ZHAireS-NJ/sim_Xiaodushan_*", ))
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
-# output_dir_base = "/sps/grand/aferrier/DC2_dummy/"
+# output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
+output_dir_base = "/sps/grand/aferrier/DC2_dummy/"
 
 params_file = 'antenna_configs/RF_params_new_leffs.json'
 
@@ -72,7 +72,7 @@ for root_dir in all_root_dirs:
     file_Vout = []
     step = 200
     existing_files = set(glob(f"{output_dir}/*.hdf5"))
-    for upper_bound in np.arange(0, 1000, step)+step:
+    for upper_bound in np.arange(0, 2000, step)+step:
         start = upper_bound - step
         stop = upper_bound
         for ev_idx in range(start, stop):
@@ -84,8 +84,6 @@ for root_dir in all_root_dirs:
         print(f"Processing events {start} to {stop} in {root_dir}")
         all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
         for ev_idx in range(len(efield_data['traces'])):
-            if meta_data['energy_primary'][ev_idx]*1e-9 <1:
-                continue
             event_traces = efield_data['traces'][ev_idx].astype(np.float64)
 
             event_trace_fft = sp.fft.rfft(event_traces)
@@ -105,13 +103,10 @@ for root_dir in all_root_dirs:
                                             current_rate=2e9, target_rate=2e9)
 
             # vout = voltage_to_adc(vout)
-            efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1]
+            efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1].replace('.root', '')
 
 
             
-            noise,_ = noise_computer.noise_samples(18, len(vout_down))
-            fig, ax = plt.subplots(3, 1, figsize=(10, 15))
-
             os.makedirs(f"{output_dir}/{efield_file_name}", exist_ok=True)
             with h5py.File(f"{output_dir}/{efield_file_name}/{index}.hdf5", "w") as f:
                 dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
@@ -165,7 +160,7 @@ for root_dir in all_root_dirs:
                 'zenith': [meta_data['zenith'][ev_idx]],
                 'azimuth': [meta_data['azimuth'][ev_idx]]
             })], ignore_index=True)
-# big_df.to_csv(f"{output_dir_base}/metadata.csv", index=False)
+big_df.to_csv(f"{output_dir_base}/metadata.csv", index=False)
 
 
 

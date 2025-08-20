@@ -96,7 +96,6 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
         antenna_pos = f['trun']['du_xyz'].array().to_numpy()[0]
     shower_meta_data_files = sorted(glob(f'{directory_to_roots}/shower_*_L0_*.root'))
     efield_files = sorted(glob(f'{directory_to_roots}/efield_*_L{L1_or_L0}_*.root'))
-    voltage_files = sorted(glob(f'{directory_to_roots}/voltage_*_L0_*.root'))
     n_events = []
     for met in shower_meta_data_files:
         with uproot.open(met) as f:
@@ -118,7 +117,6 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     event_index = []
 
     efield_trace = []
-    voltage_trace = []
     efield_du_ns = []
     efield_du_s = []
     efield_du_id = []
@@ -127,7 +125,6 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     for index_overlap in overlap:
         shower_meta_data_file = shower_meta_data_files[index_overlap]
         efield_file = efield_files[index_overlap]
-        voltage_file = voltage_files[index_overlap]
         start_index = max(start, cum_n_event_starting_index[index_overlap]) - cum_n_event_starting_index[index_overlap]
         stop_index = min(stop, cum_n_events[index_overlap]) - cum_n_event_starting_index[index_overlap]
         with uproot.open(shower_meta_data_file) as f:
@@ -163,11 +160,8 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             efield_event_number = np.concatenate((efield_event_number, f['tefield']['event_number'].array(
                 entry_start=start_index, entry_stop=stop_index).to_numpy()))
         file_names += [efield_file] * (stop_index - start_index)
-            
-        with uproot.open(voltage_file) as f:
-            print(start_index, stop_index, start, stop)
-            voltage_trace += [traces.to_numpy() for traces in f['tvoltage']['trace'].array(
-                entry_start=start_index, entry_stop=stop_index)]
+
+
             
     assert (efield_event_number == event_numbers).all(), "Event numbers in efield and shower meta data do not match."
     

@@ -70,7 +70,7 @@ for root_dir in all_root_dirs:
     output_dir = output_dir_base + root_dir_name
     os.makedirs(output_dir, exist_ok=True)
     file_Vout = []
-    step = 20
+    step = 200
     existing_files = set(glob(f"{output_dir}/*.hdf5"))
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step

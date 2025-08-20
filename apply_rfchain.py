@@ -192,7 +192,6 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     }
     efield_data = {
         'traces': efield_trace,
-        'voltage_traces': voltage_trace,
         'du_s': efield_du_s,
         'du_ns': efield_du_ns,
         'du_id': efield_du_id,

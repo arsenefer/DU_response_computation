@@ -34,12 +34,20 @@ import h5py
 import json
 import pandas as pd
 
-from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, make_full_response_matrix
+from apply_rfchain import open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc, make_full_response_matrix
 from noise import compute_noise
 
-from make_input import load_input_params_from_dict
+from make_input import load_input_params_from_dict, open_gp300
+import matplotlib.pyplot as plt
+all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
+# all_root_dirs = sorted(glob(f"/sps/grand/DC2.1rc4/GP300ZHAireS-NJ/sim_Xiaodushan_*", ))
 
-params_file = 'antenna_configs/RF_params_dummy_2048.json'
+output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
+# output_dir_base = "/sps/grand/aferrier/DC2_dummy/"
+
+params_file = 'antenna_configs/RF_params_new_leffs.json'
+
+
 with open(params_file, 'r') as f:
     params_RF = json.load(f)
 
@@ -47,23 +55,22 @@ duration, latitude, altitude, input_sampling_freq, out_sampling_freq, \
 N_samples, sampling_period, freqs, \
 out_N_samples, out_sampling_period, out_freqs, \
 LST_radians, tf, t_SN, t_EW, t_Z = load_input_params_from_dict(params_RF)
-all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
-
+print(out_freqs.max(), np.fft.rfftfreq(1024, 1/500e6).max())
 noise_computer = compute_noise(10., latitude, 
                               [f"files/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
-                              out_freqs, 
+                              np.fft.rfftfreq(1024, 1/500e6), 
                               tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
-noise_computer.noise_fourrier_spectrum
 
-output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
+
+
 big_df = pd.DataFrame({})
 for root_dir in all_root_dirs:
     root_dir_name = root_dir.rstrip('/').split('/')[-1]
     output_dir = output_dir_base + root_dir_name
     os.makedirs(output_dir, exist_ok=True)
     file_Vout = []
-    step = 200
+    step = 20
     existing_files = set(glob(f"{output_dir}/*.hdf5"))
     for upper_bound in np.arange(0, 1000, step)+step:
         start = upper_bound - step
@@ -77,6 +84,8 @@ for root_dir in all_root_dirs:
         print(f"Processing events {start} to {stop} in {root_dir}")
         all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=start, stop=stop)
         for ev_idx in range(len(efield_data['traces'])):
+            if meta_data['energy_primary'][ev_idx]*1e-9 <1:
+                continue
             event_traces = efield_data['traces'][ev_idx].astype(np.float64)
 
             event_trace_fft = sp.fft.rfft(event_traces)
@@ -88,7 +97,6 @@ for root_dir in all_root_dirs:
             # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
 
 
-
             theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
             full_response_matrix = make_full_response_matrix(t_SN, t_EW, t_Z, theta_du, phi_du, tf, input_sampling_freq=input_sampling_freq, duration=duration)
 
@@ -98,42 +106,61 @@ for root_dir in all_root_dirs:
 
             # vout = voltage_to_adc(vout)
             efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1]
-            os.makedirs(f"{output_dir}/{efield_file_name}", exist_ok=True)
-            with h5py.File(f"{output_dir}/{efield_file_name}/{index}.hdf5", "w") as f:
-                dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
-                dset[:] = vout
-
-                vout_down = vout[...,::4]  #Downsampling to 500MHz
-                # print(f"vout shape: {vout.shape}")
-                # print(f"vout_down shape: {vout_down.shape}")
-                dset = f.create_dataset("v_out_L1", vout_down.shape, dtype=np.float16)
-                dset[:] = vout_down
 
 
-                du_s = efield_data['du_s'][ev_idx]
-                dset = f.create_dataset("du_s", len(du_s), dtype=du_s.dtype)
-                dset[:] = efield_data['du_s'][ev_idx]
+            vout_down = vout[...,::4]  #Downsampling to 500MHz
+            
+            noise,_ = noise_computer.noise_samples(18, len(vout_down))
+            fig, ax = plt.subplots(3, 1, figsize=(10, 15))
+            true_v = efield_data['voltage_traces'][ev_idx].astype(np.float64)
+            true_v = true_v[...,::4]  #Downsampling to 500MHz
+            ax[0].plot(np.fft.rfftfreq(1024, 1/500e6), np.abs(np.fft.rfft(true_v[0,0,:])), label='True')
+            ax[0].plot(np.fft.rfftfreq(1024, 1/500e6), np.abs(np.fft.rfft(vout_down[0,0,:])), label='trace')
+            ax[0].set_title(f"Energy: {meta_data['energy_primary'][ev_idx]*1e-9} EeV, Event: {meta_data['event_numbers'][ev_idx]}")
+            ax[0+1].plot(np.linspace(0, 2.048, 1024), voltage_to_adc(true_v[0,0,:]), label='trace')
+            ax[0+1].plot(np.linspace(0, 2.048, 1024), voltage_to_adc(vout_down[0,0,:]), label='trace')
+            ax[1+1].plot(np.linspace(0, 2.048, 1024), voltage_to_adc(noise[0,0,:]), label='noise')
+            ax[0+1].set_title(f"Signal for event")
+            ax[1+1].set_title(f"Noise $\\sigma$ = {np.std(noise[0,0,:]):.2f} µV")
+            ax[0+1].set_ylabel("Voltage (V)")
+            ax[1+1].set_xlabel("Time (s)")
+            ax[1+1].set_ylabel("Voltage (V)")
+            ax[0].legend()
+            plt.show() 
+            # os.makedirs(f"{output_dir}/{efield_file_name}", exist_ok=True)
+            # with h5py.File(f"{output_dir}/{efield_file_name}/{index}.hdf5", "w") as f:
+            #     dset = f.create_dataset("v_out_L0", vout.shape, dtype=np.float16)
+            #     dset[:] = vout
 
-                du_ns = efield_data['du_ns'][ev_idx]
-                dset = f.create_dataset("du_ns", len(du_ns), dtype=du_ns.dtype)
-                dset[:] = efield_data['du_ns'][ev_idx]
+            #     # print(f"vout shape: {vout.shape}")
+            #     # print(f"vout_down shape: {vout_down.shape}")
+            #     dset = f.create_dataset("v_out_L1", vout_down.shape, dtype=np.float16)
+            #     dset[:] = vout_down
 
-                du_id = efield_data['du_id'][ev_idx]
-                dset = f.create_dataset("du_id", len(du_id), dtype=du_id.dtype)
-                dset[:] = efield_data['du_id'][ev_idx]
+            #     du_s = efield_data['du_s'][ev_idx]
+            #     dset = f.create_dataset("du_s", len(du_s), dtype=du_s.dtype)
+            #     dset[:] = efield_data['du_s'][ev_idx]
 
-                dset = f.create_dataset("du_pos", antenna_pos.shape, dtype=antenna_pos.dtype)
-                dset[:] = antenna_pos
+            #     du_ns = efield_data['du_ns'][ev_idx]
+            #     dset = f.create_dataset("du_ns", len(du_ns), dtype=du_ns.dtype)
+            #     dset[:] = efield_data['du_ns'][ev_idx]
 
-                f.attrs['event_idx'] = ev_idx
-                f.attrs['event_number'] = meta_data['event_numbers'][ev_idx]
-                f.attrs['shower_core_pos'] = meta_data['core_pos'][ev_idx]
-                f.attrs['xmax_pos'] = meta_data['xmax_pos'][ev_idx]
-                f.attrs['xmax_grams'] = meta_data['xmax_grams'][ev_idx]
-                f.attrs['energy_primary'] = meta_data['energy_primary'][ev_idx]
-                f.attrs['p_types'] = str(meta_data['p_types'][ev_idx])
-                f.attrs['zenith'] = meta_data['zenith'][ev_idx]
-                f.attrs['azimuth'] = meta_data['azimuth'][ev_idx]
+            #     du_id = efield_data['du_id'][ev_idx]
+            #     dset = f.create_dataset("du_id", len(du_id), dtype=du_id.dtype)
+            #     dset[:] = efield_data['du_id'][ev_idx]
+
+            #     dset = f.create_dataset("du_pos", antenna_pos.shape, dtype=antenna_pos.dtype)
+            #     dset[:] = antenna_pos
+
+            #     f.attrs['event_idx'] = ev_idx
+            #     f.attrs['event_number'] = meta_data['event_numbers'][ev_idx]
+            #     f.attrs['shower_core_pos'] = meta_data['core_pos'][ev_idx]
+            #     f.attrs['xmax_pos'] = meta_data['xmax_pos'][ev_idx]
+            #     f.attrs['xmax_grams'] = meta_data['xmax_grams'][ev_idx]
+            #     f.attrs['energy_primary'] = meta_data['energy_primary'][ev_idx]
+            #     f.attrs['p_types'] = str(meta_data['p_types'][ev_idx])
+            #     f.attrs['zenith'] = meta_data['zenith'][ev_idx]
+            #     f.attrs['azimuth'] = meta_data['azimuth'][ev_idx]
 
             big_df = pd.concat([big_df, pd.DataFrame({
                 'root_dir_name': [root_dir_name],
@@ -152,7 +179,7 @@ for root_dir in all_root_dirs:
                 'zenith': [meta_data['zenith'][ev_idx]],
                 'azimuth': [meta_data['azimuth'][ev_idx]]
             })], ignore_index=True)
-big_df.to_csv(f"{output_dir_base}/metadata.csv", index=False)
+# big_df.to_csv(f"{output_dir_base}/metadata.csv", index=False)
 
 
 

@@ -66,118 +66,6 @@ def _butter_bandpass_filter(data, lowcut, highcut, fs):
     # return filtfilt(b, a, data)  # non-causal
     return lfilter(b, a, data)  # causal
 
-
-def open_horizon(path_to_horizon):
-    """
-    Load and process horizon data from a given file.
-
-    This function reads horizon data from a file, processes it, and returns
-    a DataTable object containing the processed data. The data includes
-    frequency, angular information (theta and phi), effective lengths, and
-    phases for both theta and phi polarizations.
-
-    Args:
-        path_to_horizon (str): Path to the file containing the horizon data.
-            The file is expected to be in a format compatible with `numpy.load`.
-
-    Returns:
-        DataTable: A table containing the processed horizon data.
-
-    Notes:
-        - The function assumes the input file contains specific arrays in a
-          predefined order: f, R, X, theta, phi, lefft, leffp, phaset, phasep.
-        - Frequency values are converted from MHz to Hz.
-        - Phases are converted from degrees to radians for complex calculations.
-        - The shape of the data is inferred based on the unique theta and phi
-          values and the dimensions of the input arrays.
-        - Ensure that the conversion from radians to degrees does not affect
-          calculations elsewhere in the code.
-    """
-    f, R, X, theta, phi, lefft, leffp, phaset, phasep = np.load(
-        path_to_horizon, mmap_mode="r")
-
-    n_f = f.shape[0]
-    n_theta = len(np.unique(theta[0, :]))
-    n_phi = int(R.shape[1] / n_theta)
-    shape = (n_f, n_phi, n_theta)
-
-    dtype = "f4"
-    f = f[:, 0].astype(dtype) * 1.0e6  # MHz --> Hz
-    theta = theta[0, :n_theta].astype(dtype)  # deg
-    phi = phi[0, ::n_theta].astype(dtype)  # deg
-    lefft = lefft.reshape(shape).astype(dtype)  # m
-    leffp = leffp.reshape(shape).astype(dtype)  # m
-
-    phaset = phaset.reshape(shape).astype(dtype)  # deg
-    phasep = phasep.reshape(shape).astype(dtype)  # deg
-    leffp_reim = leffp*np.exp(1j*phasep/180*np.pi)
-    lefft_reim = lefft*np.exp(1j*phaset/180*np.pi)
-    t = DataTable(
-        frequency=f,
-        theta=theta,
-        phi=phi,
-        leff_theta_reim=lefft_reim,
-        leff_phi_reim=leffp_reim,
-        leff_theta=lefft,
-        phase_theta=phaset,
-        leff_phi=leffp,
-        phase_phi=phasep,
-    )
-    return t
-
-
-def open_gp300(path_to_gp300):
-    """
-    Load and process GP300 data from a specified file.
-
-    This function reads a `.npz` file containing GP300 data, processes the data to extract
-    frequency, theta, phi, effective lengths (leff) in both theta and phi polarizations,
-    and their respective phases. The processed data is returned as a `DataTable` object.
-
-    Args:
-        path_to_gp300 (str): Path to the `.npz` file containing GP300 data.
-
-    Returns:
-        DataTable
-
-    Notes:
-        - The input `.npz` file is expected to contain the following keys:
-          `freq_mhz`, `leff_theta`, and `leff_phi`.
-        - The frequency values in the file are converted from MHz to Hz.
-        - The `leff_theta` and `leff_phi` arrays are reshaped and processed to compute
-          their magnitudes and phases.
-    """
-    f_leff = np.load(path_to_gp300)
-    f = f_leff["freq_mhz"] * 1e6   # MHz --> Hz
-    theta = np.arange(91).astype(float)
-    phi = np.arange(361).astype(float)
-    # Real + j Imag. shape (phi, theta, freq) (361, 91, 221)
-    lefft_reim = f_leff["leff_theta"]
-    # Real + j Imag. shape (phi, theta, freq)
-    leffp_reim = f_leff["leff_phi"]
-    # shape (phi, theta, freq) --> (freq, phi, theta)
-    lefft_reim = np.moveaxis(lefft_reim, -1, 0)
-    # shape (phi, theta, freq) --> (freq, phi, theta)
-    leffp_reim = np.moveaxis(leffp_reim, -1, 0)
-    leffp = np.abs(leffp_reim)
-    lefft = np.abs(lefft_reim)
-
-    phaset = np.angle(lefft_reim, deg=True)
-    phasep = np.angle(leffp_reim, deg=True)
-    t = DataTable(
-        frequency=f,
-        theta=theta,
-        phi=phi,
-        leff_theta_reim=lefft_reim,
-        leff_phi_reim=leffp_reim,
-        leff_theta=lefft,
-        leff_phi=leffp,
-        phase_theta=phaset,
-        phase_phi=phasep,
-    )
-    return t
-
-
 def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     """
     Open the ROOT file containing the event data.
@@ -208,18 +96,17 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
         antenna_pos = f['trun']['du_xyz'].array().to_numpy()[0]
     shower_meta_data_files = sorted(glob(f'{directory_to_roots}/shower_*_L0_*.root'))
     efield_files = sorted(glob(f'{directory_to_roots}/efield_*_L{L1_or_L0}_*.root'))
+    voltage_files = sorted(glob(f'{directory_to_roots}/voltage_*_L0_*.root'))
     n_events = []
     for met in shower_meta_data_files:
         with uproot.open(met) as f:
             n_events.append(f['tshower'].num_entries)
     n_events = np.array(n_events)
-    print(n_events)
     if stop is None:
         stop = np.sum(n_events)
     cum_n_events = np.cumsum(n_events)
     cum_n_event_starting_index = cum_n_events - n_events
-    overlap = np.where((cum_n_events >= start) & (cum_n_event_starting_index < stop))[0]
-
+    overlap = np.where((cum_n_events > start) & (cum_n_event_starting_index < stop))[0]
     shower_core_pos = np.empty((0, 3))
     zenith = np.empty((0))
     azimuth = np.empty((0))
@@ -231,6 +118,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     event_index = []
 
     efield_trace = []
+    voltage_trace = []
     efield_du_ns = []
     efield_du_s = []
     efield_du_id = []
@@ -239,7 +127,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     for index_overlap in overlap:
         shower_meta_data_file = shower_meta_data_files[index_overlap]
         efield_file = efield_files[index_overlap]
-
+        voltage_file = voltage_files[index_overlap]
         start_index = max(start, cum_n_event_starting_index[index_overlap]) - cum_n_event_starting_index[index_overlap]
         stop_index = min(stop, cum_n_events[index_overlap]) - cum_n_event_starting_index[index_overlap]
         with uproot.open(shower_meta_data_file) as f:
@@ -263,6 +151,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             event_index += list(range(start_index, stop_index))
 
         with uproot.open(efield_file) as f:
+            print(start_index, stop_index, start, stop)
             efield_trace += [traces.to_numpy() for traces in f['tefield']['trace'].array(
                 entry_start=start_index, entry_stop=stop_index)]
             efield_du_ns += [du_ns.to_numpy() for du_ns in f['tefield']['du_nanoseconds'].array(
@@ -274,9 +163,19 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
             efield_event_number = np.concatenate((efield_event_number, f['tefield']['event_number'].array(
                 entry_start=start_index, entry_stop=stop_index).to_numpy()))
         file_names += [efield_file] * (stop_index - start_index)
+            
+        with uproot.open(voltage_file) as f:
+            print(start_index, stop_index, start, stop)
+            voltage_trace += [traces.to_numpy() for traces in f['tvoltage']['trace'].array(
+                entry_start=start_index, entry_stop=stop_index)]
+            
     assert (efield_event_number == event_numbers).all(), "Event numbers in efield and shower meta data do not match."
-    shower_core_pos[:,-1] += 1264  # add the height of the detector
-    xmax_pos = xmax_pos + shower_core_pos# + np.array([[0, 0, 1264]])
+    
+    # If we want z=0 at see level:
+    # shower_core_pos[:,-1] += 1264 
+    # antenna_pos[:,-1] += 1264
+
+    xmax_pos = xmax_pos + shower_core_pos
 
     # xmax_pos = xmax_pos + shower_core_pos
     kx,ky,kz = sph2cart(zenith, azimuth)
@@ -299,6 +198,7 @@ def open_event_root(directory_to_roots, start=0, stop=None, L1_or_L0='0'):
     }
     efield_data = {
         'traces': efield_trace,
+        'voltage_traces': voltage_trace,
         'du_s': efield_du_s,
         'du_ns': efield_du_ns,
         'du_id': efield_du_id,

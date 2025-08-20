@@ -167,26 +167,27 @@ def load_input_params_from_dict(params_RF):
     All_lst_hours = np.arange(0, 24, 0.1)
     LST_radians = All_lst_hours * 15 * np.pi / 180
 
+    source_path = "./" if 'source_path' not in params_RF else params_RF['source_path']
     s_parameters_path = params_RF['s_parameters_path']
     if "transfer_function_filename" in params_RF and params_RF["transfer_function_filename"] is not None:
-        tf_dict = np.load(os.path.join(s_parameters_path, params_RF["transfer_function_filename"]))
+        tf_dict = np.load(os.path.join(source_path, s_parameters_path, params_RF["transfer_function_filename"]))
         tf = tf_dict['tf'].astype(np.complex128)
         base_freqs = tf_dict['freqs'].astype(np.float64)
         tf = interp.interp1d(base_freqs, tf, kind='linear', axis=1, bounds_error=False, fill_value=0.0)(in_freqs)
         print("Loaded pre-existing transfer function from file.")
     else: 
-        balun1      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun1_filename"]), comments=['#', '!']).astype(np.float64)
-        matchnet_sn = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_sn_filename"]), comments=['#', '!']).astype(np.float64)
-        matchnet_ew = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_ew_filename"]), comments=['#', '!']).astype(np.float64)
-        matchnet_z  = np.loadtxt(os.path.join(s_parameters_path, params_RF["matchnet_z_filename"]), comments=['#', '!']).astype(np.float64)
-        LNA_sn      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_sn_filename"]), comments=['#', '!']).astype(np.float64)
-        LNA_ew      = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_ew_filename"]), comments=['#', '!']).astype(np.float64)
-        LNA_z       = np.loadtxt(os.path.join(s_parameters_path, params_RF["LNA_z_filename"]), comments=['#', '!']).astype(np.float64)
-        cable       = np.loadtxt(os.path.join(s_parameters_path, params_RF["cable_filename"]), comments=['#', '!']).astype(np.float64)
-        vga         = np.loadtxt(os.path.join(s_parameters_path, params_RF["vga_filename"]), comments=['#', '!']).astype(np.float64)
-        balun2      = np.loadtxt(os.path.join(s_parameters_path, params_RF["balun2_filename"]), comments=['#', '!']).astype(np.float64)
-        zload_map   = np.loadtxt(os.path.join(s_parameters_path, params_RF["zload_map_filename"]), comments=['#', '!']).astype(np.float64)
-        zant_map    = np.loadtxt(os.path.join(s_parameters_path, params_RF["zant_map_filename"]), delimiter=",", comments=['#', '!'], skiprows=1).astype(np.float64)
+        balun1      = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["balun1_filename"]), comments=['#', '!']).astype(np.float64)
+        matchnet_sn = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["matchnet_sn_filename"]), comments=['#', '!']).astype(np.float64)
+        matchnet_ew = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["matchnet_ew_filename"]), comments=['#', '!']).astype(np.float64)
+        matchnet_z  = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["matchnet_z_filename"]), comments=['#', '!']).astype(np.float64)
+        LNA_sn      = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["LNA_sn_filename"]), comments=['#', '!']).astype(np.float64)
+        LNA_ew      = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["LNA_ew_filename"]), comments=['#', '!']).astype(np.float64)
+        LNA_z       = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["LNA_z_filename"]), comments=['#', '!']).astype(np.float64)
+        cable       = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["cable_filename"]), comments=['#', '!']).astype(np.float64)
+        vga         = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["vga_filename"]), comments=['#', '!']).astype(np.float64)
+        balun2      = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["balun2_filename"]), comments=['#', '!']).astype(np.float64)
+        zload_map   = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["zload_map_filename"]), comments=['#', '!']).astype(np.float64)
+        zant_map    = np.loadtxt(os.path.join(source_path, s_parameters_path, params_RF["zant_map_filename"]), delimiter=",", comments=['#', '!'], skiprows=1).astype(np.float64)
 
         list_s_maps_sn = [balun1, matchnet_sn, LNA_sn, cable, vga]
         list_s_maps_ew = [balun1, matchnet_ew, LNA_ew, cable, vga]
@@ -202,19 +203,19 @@ def load_input_params_from_dict(params_RF):
     t_EW = None
     t_Z = None
     if 'path_to_GP300_SN' in params_RF and params_RF["path_to_GP300_SN"] is not None:
-        t_SN = open_gp300(params_RF["path_to_GP300_SN"])
+        t_SN = open_gp300(os.path.join(source_path, params_RF["path_to_GP300_SN"]))
     elif 'path_to_horizon_SN' in params_RF and params_RF["path_to_horizon_SN"] is not None:
-        t_SN = open_horizon(params_RF["path_to_horizon_SN"])
+        t_SN = open_horizon(os.path.join(source_path, params_RF["path_to_horizon_SN"]))
 
     if 'path_to_GP300_EW' in params_RF and params_RF["path_to_GP300_EW"] is not None:
-        t_EW = open_gp300(params_RF["path_to_GP300_EW"])
+        t_EW = open_gp300(os.path.join(source_path, params_RF["path_to_GP300_EW"]))
     elif 'path_to_horizon_EW' in params_RF and params_RF["path_to_horizon_EW"] is not None:
-        t_EW = open_horizon(params_RF["path_to_horizon_EW"])
+        t_EW = open_horizon(os.path.join(source_path, params_RF["path_to_horizon_EW"]))
 
     if 'path_to_GP300_Z' in params_RF and params_RF["path_to_GP300_Z"] is not None:
-        t_Z = open_gp300(params_RF["path_to_GP300_Z"])
+        t_Z = open_gp300(os.path.join(source_path, params_RF["path_to_GP300_Z"]))
     elif 'path_to_horizon_Z' in params_RF and params_RF["path_to_horizon_Z"] is not None:
-        t_Z = open_horizon(params_RF["path_to_horizon_Z"])
+        t_Z = open_horizon(os.path.join(source_path, params_RF["path_to_horizon_Z"]))
 
     if t_SN is None or t_EW is None or t_Z is None:
         raise ValueError("Effective lengths for SN, EW, and Z must be provided in the parameters.")

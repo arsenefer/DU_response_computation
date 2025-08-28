@@ -42,7 +42,7 @@ class compute_noise():
                  LF_freqs, 
                  target_freqs,
                  tf_rfchain,
-                 duration=4.096e-6,
+                 duration,
                  leff_x=None, 
                  leff_y=None, 
                  leff_z=None):
@@ -176,6 +176,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         for lst_idx, lst_rad in enumerate(self.lst_rads[:]):
             print(
                 f"Calculating noise power for LST {lst_rad*12/np.pi:.2f} hours")
+            # all_zenith, all_azimuth = self.latlon2zenaz((lst_rad + np.pi)%(2*np.pi), mod_pi=True)
             all_zenith, all_azimuth = self.latlon2zenaz(lst_rad, mod_pi=True)
 
             for coord_idx, l_effs in enumerate([(self.leff_x_theta_reim_LF, self.leff_x_phi_reim_LF),
@@ -236,7 +237,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
     def Voc_psd(self):
         return  self.P_nu * Z0   ## V^2/Hz poutr les 221 frequqnce de LFmap
     def Vout_psd(self):
-        return self.Voc_psd() * np.abs(self.tf_LF) * np.abs(self.tf_LF)
+        return self.Voc_psd() * (np.abs(self.tf_LF) * np.abs(self.tf_LF))
     
     def noise_fourrier_traces(self):
         """
@@ -254,7 +255,8 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         
         self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
                                               bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
-        self._noise_fourrier_spectrum = np.sqrt(self.noise_variance  * N * fs / 2)  # V/Hz
+        self._noise_fourrier_spectrum = np.sqrt(self.noise_variance * N * fs / 2)  # V
+        self._noise_fourrier_spectrum_sqrtfreq = np.sqrt(self.noise_variance)  # V
         return self._noise_fourrier_spectrum
 
     @property

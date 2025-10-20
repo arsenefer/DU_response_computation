@@ -87,7 +87,7 @@ class compute_noise():
         delta_long_array = np.concatenate((delta_long_array, delta_long_array[-1:, :]), axis=0)
 
         self.delta_lat2, self.delta_long2 = delta_lat_array, delta_long_array
-        
+
         self.delta_lat = np.abs(self.lat_map[0, 0]-self.lat_map[0, 1])
         self.delta_long = np.abs(self.long_map[0, 0]-self.long_map[1, 0])
 
@@ -122,7 +122,7 @@ class compute_noise():
     @property
     def lst_rads(self):
         return self.lst_hours / 24 * 2 * np.pi
-    
+
     def get_temp_map(self, freq_idx):
         """
         Returns the temperature map for the given frequency index.
@@ -139,7 +139,6 @@ class compute_noise():
         add_pi: if True, add pi to the azimuth angle
         """
         return latlon2zenaz(self.detector_lat, lst_rad, self.lat_map, self.long_map, mod_pi=mod_pi, add_pi=add_pi)
-
 
     def noise_power(self, plot=False):
         """
@@ -319,12 +318,12 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         return v_noise, v_complex_fft
 
 
-def add_jitter(du_ns, sigma=5, sample_rate=2e9, seed=None):
+def add_jitter(du_ns, sigma=5, seed=None):
     """
     Add Gaussian jitter to the given time series.
 
     Parameters:
-        du_ns (numpy.ndarray): The time series data to which jitter will be added.
+        du_ns (numpy.ndarray): The time series data to which jitter will be added in ns.
         sigma (float): The standard deviation of the Gaussian noise to be added in ns.
         sample_rate (float): The sampling rate of the time series data in Hz.
         seed (int, optional): Random seed for reproducibility.
@@ -333,6 +332,20 @@ def add_jitter(du_ns, sigma=5, sample_rate=2e9, seed=None):
         numpy.ndarray: The time series with added Gaussian jitter.
     """
     rng = np.random.default_rng(seed)
-    jitter_bin = np.round(rng.normal(0, sigma / (sample_rate*1e-9), size=du_ns.shape))
-    jitter = (jitter_bin * (sample_rate*1e-9)).astype(du_ns.dtype)
-    return du_ns + jitter
+    jitter_time = np.round(rng.normal(0, sigma, size=du_ns.shape)).astype(du_ns.dtype) #jittered time in whole nanoseconds
+    return du_ns + jitter_time
+
+def add_smearing(amplitudes, sigma=7):
+    """
+    Add Gaussian smearing to the given amplitude data.
+
+    Parameters:
+        amplitudes (numpy.ndarray): The amplitude data to which smearing will be added.
+        sigma (float): The standard deviation of the Gaussian noise to be added.
+    
+    Returns:
+        numpy.ndarray: The amplitude data with added Gaussian smearing.
+    """
+    rng = np.random.default_rng()
+    noise = rng.normal(1, sigma/100, size=amplitudes.shape[0])
+    return amplitudes * noise

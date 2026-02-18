@@ -72,7 +72,7 @@ class compute_noise():
             Effective length data for the z-direction. Default is None.
         """
         self.detector_lat = detector_lat
-        self.lst_hours = np.arange(0, 24, lst_time_resolution)
+        self.lst_hours = (np.arange(0, 24, lst_time_resolution) + 12) % 24  # Shift LST by 12 hours to correct for the previous error
 
         self.list_temp_files = list_temp_files
         self.LF_freqs = LF_freqs
@@ -183,17 +183,21 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
                                                 (self.leff_z_theta_reim_LF, self.leff_z_phi_reim_LF)]):
                 if type(l_effs) is type(None):
                     continue
+                complete_l_eff_phi = np.linspace(0, 2 * np.pi, 361, endpoint=True)
                 leff_theta, leff_phi = l_effs
                 leff_theta = np.rollaxis(leff_theta, 0, leff_theta.ndim)
                 leff_phi = np.rollaxis(leff_phi, 0, leff_phi.ndim)
-                
-                leff_theta_interpolated_dir = interp.interpn((self.l_eff_phi, self.l_eff_theta),
+                leff_theta = interp.interp1d(self.l_eff_phi, leff_theta,
+                                             axis=0, kind='cubic', fill_value='extrapolate')(complete_l_eff_phi)  #Interpolating leff at new azimuths
+                leff_phi = interp.interp1d(self.l_eff_phi, leff_phi,
+                                           axis=0, kind='cubic', fill_value='extrapolate')(complete_l_eff_phi)  #Interpolating leff at new azimuths
+                leff_theta_interpolated_dir = interp.interpn((complete_l_eff_phi, self.l_eff_theta),
                                                          leff_theta,
                                                          (all_azimuth, all_zenith),
                                                          bounds_error=False, fill_value=0)  #Interpolating leff at new directions
 
 
-                leff_phi_interpolated_dir = interp.interpn((self.l_eff_phi, self.l_eff_theta),
+                leff_phi_interpolated_dir = interp.interpn((complete_l_eff_phi, self.l_eff_theta),
                                                        leff_phi,
                                                        (all_azimuth, all_zenith),
                                                        bounds_error=False, fill_value=0)  #Interpolating leff at new directions

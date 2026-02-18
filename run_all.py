@@ -5,27 +5,38 @@ import matplotlib.pyplot as plt
 SMALL_SIZE = 10;MEDIUM_SIZE = 12;BIGGER_SIZE = 14
 plt.rc('font', size=BIGGER_SIZE);plt.rc('axes', titlesize=BIGGER_SIZE);plt.rc('axes', labelsize=BIGGER_SIZE);plt.rc('xtick', labelsize=MEDIUM_SIZE);plt.rc('ytick', labelsize=MEDIUM_SIZE);plt.rc('legend', fontsize=BIGGER_SIZE);plt.rc('figure', titlesize=BIGGER_SIZE)
 import uproot 
+import json
 import scipy as sp
-from apply_rfchain import open_gp300, open_event_root, percieved_theta_phi, get_leff, smap_2_tf, efield_2_voltage, voltage_to_adc
+from apply_rfchain import open_event_root, percieved_theta_phi, get_leff, make_full_response_matrix, efield_2_voltage, voltage_to_adc
 from noise import compute_noise
-from input_script import *
+from make_input import load_input_params_from_dict
 
 ## Input section
-root_dir = f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/only_0_NJ/"
+root_dir = "/volatile/home/af274537/Documents/DATA/ROOT_AND_TRACES/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_20221025_220000_RUN0_CD_GP300ZHAireS-NJ_0004/"
+# root_dir = f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2RF2Test/only_0_NJ/"
+antenna_params_file = 'antenna_configs/RF_params_new_leffs.json'
 
 
-noise_computer = compute_noise(6, latitude, 
-                              [f"LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
+
+with open(antenna_params_file, 'r') as f:
+    params_RF = json.load(f)
+
+duration, latitude, altitude, input_sampling_freq, out_sampling_freq, \
+N_samples, sampling_period, freqs, \
+out_N_samples, out_sampling_period, out_freqs, \
+LST_radians, tf, t_SN, t_EW, t_Z = load_input_params_from_dict(params_RF)
+
+noise_computer = compute_noise(12, latitude, 
+                              [f"files/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
                               out_freqs, 
-                              tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
+                              tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z, duration=duration)
 
-samples, samples_fft = noise_computer.noise_samples(6, 1000)
+samples, samples_fft = noise_computer.noise_samples(18, 1000)
 samples = voltage_to_adc(samples)
-print(np.linalg.norm(samples.std(axis=-1)[:,:2], axis=-1).mean())
-all_antenna_pos, meta_data, efield_data = open_event_root(root_dir)
+all_antenna_pos, meta_data, efield_data = open_event_root(root_dir, start=0, stop=10)
 for ev_number in range(0, 10):
-    event_traces = efield_data['traces'][ev_number].to_numpy().astype(np.float64)
+    event_traces = efield_data['traces'][ev_number].astype(np.float64)
 
     # event_traces = event_traces[...,500:4096+500]
 
@@ -33,26 +44,73 @@ for ev_number in range(0, 10):
     antenna_pos = all_antenna_pos[efield_data['du_id'][ev_number]]
     xmax_pos = meta_data['xmax_pos'][ev_number]
     shower_core_pos = meta_data['core_pos'][ev_number]
+    index = meta_data['event_index'][ev_number]
 
 
     # theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos+np.array([0,0,1264])) #To reproduce error
     theta_du, phi_du = percieved_theta_phi(antenna_pos, xmax_pos)
-    l_eff_sn = get_leff(t_SN, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-    l_eff_ew = get_leff(t_EW, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-    l_eff_z = get_leff(t_Z, theta_du, phi_du, input_sampling_freq=sampling_freq, duration=duration)
-    l_eff = np.stack([l_eff_sn, l_eff_ew, l_eff_z], axis=2)
-
-    full_response = l_eff * tf[None,None,...]
-    
-    print(full_response.shape)
+    full_response_matrix = make_full_response_matrix(t_SN, t_EW, t_Z, 
+                                                     theta_du, phi_du, tf, 
+                                                     input_sampling_freq=input_sampling_freq, 
+                                                     duration=duration)
+    print("TF shape:", tf.shape)
+    print(full_response_matrix.shape)
         
     vout, vout_f = efield_2_voltage(event_trace_fft, 
-                                    full_response, 
-                                    current_rate=2e9, target_rate=2e9)
+                                    full_response_matrix, 
+                                    current_rate=input_sampling_freq, target_rate=out_sampling_freq)
 
 
     print(vout.shape,   vout_f.shape)
+    # Clean, grouped plots using subplots
+    comp_labels = ['SN', 'EW', 'Z']
+    colors = ['C0', 'C1', 'C2']
 
+    # Frequency axis (MHz)
+    freq_mhz = out_freqs / 1e6
+
+    # Time axis (µs) and window
+    times = np.arange(vout.shape[-1]) * 1e6 / out_sampling_freq
+    window = (times > 0.5) & (times < 1.8)
+
+    sample_idx = 0  # choose noise sample
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 4), constrained_layout=True)
+
+    # Frequency-domain |V(f)|
+    ax = axs[0]
+    for i, lab in enumerate(comp_labels):
+        ax.plot(freq_mhz, np.abs(vout_f[2, i]), label=lab, color=colors[i])
+    ax.set_title('Frequency-domain amplitude')
+    ax.set_xlabel('Frequency [MHz]')
+    ax.set_ylabel('|V(f)| [a.u.]')
+    ax.set_yscale('log')
+    ax.legend(title='Component')
+    ax.grid(True, alpha=0.3)
+
+    # Time-domain voltage
+    ax = axs[1]
+    for i, lab in enumerate(comp_labels):
+        ax.plot(times[window], vout[2, i, window], label=lab, color=colors[i])
+    ax.set_title('Time-domain voltage (windowed)')
+    ax.set_xlabel('Time [µs]')
+    ax.set_ylabel('Voltage [µV]')
+    ax.legend(title='Component')
+    ax.grid(True, alpha=0.3)
+
+    # Time-domain voltage + noise
+    ax = axs[2]
+    for i, lab in enumerate(comp_labels):
+        ax.plot(times[window], vout[2, i, window] + samples[sample_idx, i, window],
+                label=f'{lab} + noise', color=colors[i])
+    ax.set_title('Time-domain voltage + noise (windowed)')
+    ax.set_xlabel('Time [µs]')
+    ax.set_ylabel('Voltage [µV]')
+    ax.legend(title='Component')
+    ax.grid(True, alpha=0.3)
+
+    plt.show()
+    continue
     ####################################################################################################
     ####################################################################################################
     ####################################################################################################

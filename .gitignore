@@ -6,4 +6,4 @@ LFmap
 __pycache__
 *.pyc
 *.zip
-*.ipynb
+codes/

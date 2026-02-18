@@ -39,16 +39,17 @@ from noise import compute_noise
 
 from make_input import load_input_params_from_dict, open_gp300
 import matplotlib.pyplot as plt
-# all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/Data/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
-all_root_dirs = sorted(glob(f"/sps/grand/DC2.1rc4/GP300ZHAireS-NJ/sim_Xiaodushan_*", ))
-
-# output_dir_base = "/volatile/home/af274537/Documents/Data/GNN_forICRC/hdf5data_Nleff_dummy_1rc4_bollo_testmeta/"
-output_dir_base = "/sps/grand/aferrier/DC2_dummy/"
-
-params_file = 'antenna_configs/RF_params_new_leffs.json'
 
 
-with open(params_file, 'r') as f:
+all_root_dirs = sorted(glob(f"/volatile/home/af274537/Documents/DATA/ROOT_AND_TRACES/GROOT_DS/DC2.1rc4/ZHaireS-NJ/sim_Xiaodushan_*", ))
+
+if "volatile" in os.getcwd():
+    output_dir_base = "/volatile/home/af274537/Documents/WorkingDir/new_rfchain/codes"
+    antenna_params_file = 'antenna_configs/RF_params_new_leffs.json'
+else:
+    output_dir_base = "/sps/grand/aferrier/DC2_dummy/"
+
+with open(antenna_params_file, 'r') as f:
     params_RF = json.load(f)
 
 duration, latitude, altitude, input_sampling_freq, out_sampling_freq, \
@@ -56,11 +57,11 @@ N_samples, sampling_period, freqs, \
 out_N_samples, out_sampling_period, out_freqs, \
 LST_radians, tf, t_SN, t_EW, t_Z = load_input_params_from_dict(params_RF)
 print(out_freqs.max(), np.fft.rfftfreq(1024, 1/500e6).max())
-noise_computer = compute_noise(10., latitude, 
+noise_computer = compute_noise(6., latitude, 
                               [f"files/LFmap/LFmapshort{i}.npy" for i in range(20, 251)], 
                               np.arange(20,251)*1e6, 
                               np.fft.rfftfreq(1024, 1/500e6), 
-                              tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z)
+                              tf, leff_x=t_SN, leff_y=t_EW, leff_z=t_Z, duration=duration)
 
 
 
@@ -100,7 +101,7 @@ for root_dir in all_root_dirs:
 
             vout, vout_f = efield_2_voltage(event_trace_fft, 
                                             full_response_matrix, 
-                                            current_rate=2e9, target_rate=2e9)
+                                            current_rate=input_sampling_freq, target_rate=out_sampling_freq)
 
             # vout = voltage_to_adc(vout)
             efield_file_name = meta_data['files'][ev_idx].rstrip('/').split('/')[-1].replace('.root', '')

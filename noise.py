@@ -218,15 +218,19 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
                                         leff_theta_interpolated_dir, leff_phi_interpolated_dir, A_eff, B_nu, self.long_map, self.lat_map, self.detector_lat)
                         plt.show()
 
-                    P_nu = 1/2 * \
-                        A_eff[freq_idx] * B_nu * \
-                        np.sin(self.lat_map) * self.delta_lat2 * self.delta_long2
-                    P_nu = np.sum(P_nu)
-                    P_nuxyz[lst_idx, coord_idx, freq_idx] = P_nu
+                    P_nu = (
+                        0.5 # 1/2 for unpolarized radiation
+                        * A_eff[freq_idx] * B_nu # Power per unit area per unit frequency
+                        * np.sin(self.lat_map) # Jacobian factor for spherical coordinates
+                        * self.delta_lat2 * self.delta_long2 # Angular resolution element in steradians
+                    )  #Power per unit frequency received by the antenna from the direction (zenith, azimuth)
+                    
+                    P_nu = np.sum(P_nu) # Integrating over the whole sky
+                    P_nuxyz[lst_idx, coord_idx, freq_idx] = P_nu #Power per unit frequency for the given LST given polar
 
         P_nuxyz = np.array(P_nuxyz)
         self._P_nu = P_nuxyz   # W/Hz
-        return P_nuxyz
+        return P_nuxyz #shape (n_lst, 3, n_freqs)
     
     @property
     def P_nu(self):
@@ -234,11 +238,12 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         Returns the noise power in frequency domains.
         """
         if not hasattr(self, '_P_nu'):
-            return self.noise_power()  #*2 # Artificial factor. Should need to be removed
+            return self.noise_power()  
         return self._P_nu
 
     def Voc_psd(self):
-        return  self.P_nu * Z0   ## V^2/Hz poutr les 221 frequqnce de LFmap
+        return  self.P_nu * Z0   ## V^2/Hz pour les 221 frequqnce de LFmap
+    
     def Vout_psd(self):
         return self.Voc_psd() * (np.abs(self.tf_LF) * np.abs(self.tf_LF)) ## V^2/Hz poutr les 221 frequqnce de LFmap
     
@@ -248,8 +253,6 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         Returns:
             numpy.ndarray: The noise PSD at the output of the RF chain.
         """
-        N = 2 * (len(self.target_freqs)-1) 
-        fs = 2 * self.target_freqs[-1]
         self.noise_variance = self.Vout_psd()
         
         self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
@@ -268,10 +271,8 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
 
         N = 2 * (len(self.target_freqs)-1) 
         fs = 2 * self.target_freqs[-1]
-        self.noise_variance = self.Vout_psd()
-        
-        self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
-                                              bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
+        self.noise_variance = self.noise_psd()
+
         self._noise_fourrier_spectrum = np.sqrt(self.noise_variance * N * fs / 2)  # V
         self._noise_asd = np.sqrt(self.noise_variance)  # V/Hz^(1/2)
         return self._noise_fourrier_spectrum
@@ -321,6 +322,88 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         """
 
         lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
+
+        delta_f = self.target_freqs[1] 
+        fs = 2 * self.target_freqs[-1]
+        delta_t = 1 / fs
+        duration = 1 / delta_f
+
+        n_freqs = len(self.target_freqs)
+        n_times = 2 * (n_freqs - 1)  # Number of time-domain samples corresponding to the target frequencies
+        
+        rng = np.random.default_rng(seed)
+           
+
+        scale2 = self.noise_psd()[lst_idx] * duration / 4 
+        amp2 = rng.chisquare(df=2, size=(n_samples, 3, len(self.target_freqs))) * scale2
+        phase = 2 * np.pi * rng.random(size=(n_samples, 3, n_freqs))
+        v_complex_fft = np.sqrt(amp2) * np.exp(1j*phase)
+        v_complex_fft = v_complex_fft / delta_t # Scaling to get the numpy convention
+        v_noise = np.fft.irfft(v_complex_fft, axis=-1)
+
+        if micro:
+            v_noise *= 1e6
+            v_complex_fft *= 1e6
+        return v_noise, v_complex_fft
+    
+    def noise_samples_2(self, lst_hour, n_samples=1, seed=None, micro=True):
+        """
+        Generate noise samples based on the noise spectrum.
+        Args:
+            lst_hour (float): Local sidereal time in hours.
+            n_samples (int): Number of samples to generate.
+            seed (int, optional): Random seed for reproducibility.
+            micro (bool): If True, convert voltage traces to microvolts.
+        Returns:    
+            tuple: A tuple containing the complex FFT of the noise samples and the
+                     frequency-domain noise samples.
+                     v_noise: Time-domain noise samples. (shape: (n_samples, 3, N_samples))
+                     v_complex_fft: Complex FFT of the noise samples. (shape: (n_samples, 3, n_freqs))
+        """
+        lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
+
+        delta_f = self.target_freqs[1] 
+        fs = 2 * self.target_freqs[-1]
+        delta_t = 1 / fs
+        duration = 1 / delta_f
+
+        n_freqs = len(self.target_freqs)
+        n_times = 2 * (n_freqs - 1)  # Number of time-domain samples corresponding to the target frequencies
+        
+        rng = np.random.default_rng(seed)
+        
+        scale2 = self.noise_psd()[lst_idx] * duration / 2 
+        real = rng.normal(loc=0, scale=np.sqrt(scale2 / 2), 
+                                  size=(n_samples, 3, len(self.target_freqs)))
+        imag = rng.normal(loc=0, scale=np.sqrt(scale2 / 2), 
+                                  size=(n_samples, 3, len(self.target_freqs))) 
+
+        
+        v_complex_fft = real + 1j*imag #in continuous convention
+        v_complex_fft = v_complex_fft / delta_t
+        v_noise = np.fft.irfft(v_complex_fft, axis=-1)
+        if micro:
+            v_noise *= 1e6
+            v_complex_fft *= 1e6
+        return v_noise, v_complex_fft
+
+
+    def noise_samples_old(self, lst_hour, n_samples=1, seed=None, micro=True):
+        """
+        Generate noise samples based on the noise spectrum.
+        Args:
+            lst_hour (float): Local sidereal time in hours.
+            n_samples (int): Number of samples to generate.
+            seed (int, optional): Random seed for reproducibility.
+            micro (bool): If True, convert voltage traces to microvolts.
+        Returns:    
+            tuple: A tuple containing the complex FFT of the noise samples and the
+                     frequency-domain noise samples.
+                     v_noise: Time-domain noise samples. (shape: (n_samples, 3, N_samples))
+                     v_complex_fft: Complex FFT of the noise samples. (shape: (n_samples, 3, n_freqs))
+        """
+
+        lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
         n_freqs = len(self.target_freqs)
 
         rng = np.random.default_rng(seed)
@@ -334,8 +417,6 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
             v_noise *= 1e6
             v_complex_fft *= 1e6
         return v_noise, v_complex_fft
-
-
 def add_jitter(du_ns, sigma=5, seed=None):
     """
     Add Gaussian jitter to the given time series.

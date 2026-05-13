@@ -240,7 +240,21 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
     def Voc_psd(self):
         return  self.P_nu * Z0   ## V^2/Hz poutr les 221 frequqnce de LFmap
     def Vout_psd(self):
-        return self.Voc_psd() * (np.abs(self.tf_LF) * np.abs(self.tf_LF))
+        return self.Voc_psd() * (np.abs(self.tf_LF) * np.abs(self.tf_LF)) ## V^2/Hz poutr les 221 frequqnce de LFmap
+    
+    def noise_psd(self):
+        """
+        Calculate the noise power spectral density (PSD) at the output of the RF chain.
+        Returns:
+            numpy.ndarray: The noise PSD at the output of the RF chain.
+        """
+        N = 2 * (len(self.target_freqs)-1) 
+        fs = 2 * self.target_freqs[-1]
+        self.noise_variance = self.Vout_psd()
+        
+        self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
+                                              bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
+        return self.noise_variance
     
     def noise_fourrier_traces(self):
         """
@@ -259,7 +273,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
                                               bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
         self._noise_fourrier_spectrum = np.sqrt(self.noise_variance * N * fs / 2)  # V
-        self._noise_fourrier_spectrum_sqrtfreq = np.sqrt(self.noise_variance)  # V
+        self._noise_asd = np.sqrt(self.noise_variance)  # V/Hz^(1/2)
         return self._noise_fourrier_spectrum
 
     @property

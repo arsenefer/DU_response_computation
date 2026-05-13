@@ -53,8 +53,6 @@ for ev_number in range(0, 10):
                                                      theta_du, phi_du, tf, 
                                                      input_sampling_freq=input_sampling_freq, 
                                                      duration=duration)
-    print("TF shape:", tf.shape)
-    print(full_response_matrix.shape)
         
     vout, vout_f = efield_2_voltage(event_trace_fft, 
                                     full_response_matrix, 

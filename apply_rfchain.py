@@ -500,7 +500,7 @@ def make_full_response_matrix(t_SN, t_EW, t_Z, theta_du, phi_du, tf, duration=4.
     return full_response
 
 def efield_2_voltage(
-    event_trace_fft, full_response, target_rate=2e9, current_rate=2e9
+    event_trace_fft, full_response, target_rate=2e9, current_rate=2e9, compute_td=True
 ):
     """
     Converts electric field data in the frequency domain to voltage data in the time domain.
@@ -527,7 +527,10 @@ def efield_2_voltage(
     # vout_f[:, :, in_antenna_band] = vout_fft_inband
     ratio = target_rate / current_rate
     m = int((vout_f.shape[-1] - 1) * 2 * ratio)
-    return sp.fft.irfft(vout_f, m) * ratio, vout_f[...,:m//2+1]
+    if compute_td:
+        return sp.fft.irfft(vout_f, m) * ratio, vout_f[...,:m//2+1] * ratio
+    else:
+        return None, vout_f[...,:m//2+1] * ratio
 
 def voltage_to_adc(voltage_traces, micro=True):
     """

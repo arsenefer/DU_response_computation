@@ -72,7 +72,7 @@ class compute_noise():
             Effective length data for the z-direction. Default is None.
         """
         self.detector_lat = detector_lat
-        self.lst_hours = (np.arange(0, 24, lst_time_resolution) + 12) % 24  # Shift LST by 12 hours to correct for the previous error
+        self.lst_hours = (np.arange(0, 24, lst_time_resolution))# + 12) % 24  # Shift LST by 12 hours to correct for the previous error
 
         self.list_temp_files = list_temp_files
         self.LF_freqs = LF_freqs
@@ -121,7 +121,7 @@ class compute_noise():
         
     @property
     def lst_rads(self):
-        return self.lst_hours / 24 * 2 * np.pi
+        return ((self.lst_hours+12)%24) / 24 * 2 * np.pi
 
     def get_temp_map(self, freq_idx):
         """
@@ -174,7 +174,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         P_nuxyz = np.zeros((len(self.lst_rads), 3, len(self.LF_freqs)))
         for lst_idx, lst_rad in enumerate(self.lst_rads[:]):
             print(
-                f"Calculating noise power for LST {lst_rad*12/np.pi:.2f} hours")
+                f"Calculating noise power for LST {self.lst_hours[lst_idx]:.2f} hours")
             # all_zenith, all_azimuth = self.latlon2zenaz((lst_rad + np.pi)%(2*np.pi), mod_pi=True)
             all_zenith, all_azimuth = self.latlon2zenaz(lst_rad, mod_pi=True)
 
@@ -247,16 +247,25 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
     def Vout_psd(self):
         return self.Voc_psd() * (np.abs(self.tf_LF) * np.abs(self.tf_LF)) ## V^2/Hz poutr les 221 frequqnce de LFmap
     
-    def noise_psd(self):
+    def noise_psd(self, lst_hour=None):
         """
         Calculate the noise power spectral density (PSD) at the output of the RF chain.
         Returns:
             numpy.ndarray: The noise PSD at the output of the RF chain.
         """
-        self.noise_variance = self.Vout_psd()
+        if hasattr(self, 'noise_variance'):
+            if lst_hour is not None:
+                lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
+                return self.noise_variance[lst_idx]
+            return self.noise_variance
+        else:
+            nv = self.Vout_psd()
         
-        self.noise_variance = interp.interp1d(self.LF_freqs, self.Vout_psd(), 
+        self.noise_variance = interp.interp1d(self.LF_freqs, nv, 
                                               bounds_error=False, fill_value=0, axis=-1)(self.target_freqs)
+        if lst_hour is not None:
+            lst_idx = np.abs(self.lst_hours - lst_hour).argmin()
+            return self.noise_variance[lst_idx]
         return self.noise_variance
     
     def noise_fourrier_traces(self):
@@ -334,7 +343,7 @@ $            - `get_temp_map`: Retrieves the temperature map for a given frequen
         rng = np.random.default_rng(seed)
            
 
-        scale2 = self.noise_psd()[lst_idx] * duration / 4 
+        scale2 = self.noise_psd(lst_idx)[lst_idx] * duration / 4 
         amp2 = rng.chisquare(df=2, size=(n_samples, 3, len(self.target_freqs))) * scale2
         phase = 2 * np.pi * rng.random(size=(n_samples, 3, n_freqs))
         v_complex_fft = np.sqrt(amp2) * np.exp(1j*phase)

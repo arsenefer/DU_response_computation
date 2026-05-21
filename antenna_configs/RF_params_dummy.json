@@ -1,0 +1,13 @@
+{
+    "latitude": 40.96,
+    "altitude":1264,
+    "duration": 4.096e-6,
+    "input_sampling_freq": 2e9,
+    "out_sampling_freq": 2e9,
+    "source_path":"/volatile/home/af274537/Documents/WorkingDir/new_rfchain",
+    "s_parameters_path": "./files/electronics2",
+    "transfer_function_filename":"dummy_rfchain.npz",
+    "path_to_GP300_EW": "./files/l_eff_maps_2/Light_GP300Antenna_EWarm_leff.npz",
+    "path_to_GP300_SN": "./files/l_eff_maps_2/Light_GP300Antenna_SNarm_leff.npz",
+    "path_to_GP300_Z": "./files/l_eff_maps_2/Light_GP300Antenna_Zarm_leff.npz"
+    }
